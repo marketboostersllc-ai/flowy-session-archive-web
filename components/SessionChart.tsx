@@ -14,6 +14,8 @@ import {
 } from "lightweight-charts";
 import type { SeriesPoint, SessionEvent } from "@/lib/types";
 import { GOAL_LABELS } from "@/lib/types";
+import { GoalBarsPrimitive, type GoalBarItem } from "@/lib/goalBarsPrimitive";
+import type { GoalTouchPayload } from "@/lib/types";
 
 function toTime(iso: string): UTCTimestamp {
   return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp;
@@ -33,12 +35,13 @@ function nearestPoint(points: PricePoint[], target: UTCTimestamp): PricePoint | 
   return points[lo];
 }
 
+const GOAL_BAR_COLOR = "#c084fc";
+
 function eventMarker(ev: SessionEvent, time: UTCTimestamp, size: number): SeriesMarker<Time> | null {
   const id = String(ev.id);
-  if (ev.type === "goal_touch") {
-    const p = ev.payload as { goal: string };
-    return { id, time, position: "belowBar", color: "#c084fc", shape: "circle", text: GOAL_LABELS[p.goal] ?? p.goal, size };
-  }
+  // goal_touch ya no se dibuja como marcador: lo pinta GoalBarsPrimitive
+  // como barra horizontal (ancho ∝ volumen), igual que en ATAS.
+  if (ev.type === "goal_touch") return null;
   if (ev.type === "saturation_armed") {
     const p = ev.payload as { direction: "buy" | "sell" };
     return {
@@ -87,6 +90,7 @@ export default function SessionChart({
   const zSeriesRef = useRef<ISeriesApi<"Baseline"> | null>(null);
   const netgexSeriesRef = useRef<ISeriesApi<"Baseline"> | null>(null);
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const goalBarsRef = useRef<GoalBarsPrimitive | null>(null);
   const pricePointsRef = useRef<PricePoint[]>([]);
   const zPointsRef = useRef<PricePoint[]>([]);
   const netgexPointsRef = useRef<PricePoint[]>([]);
@@ -194,6 +198,10 @@ export default function SessionChart({
 
     markersApiRef.current = createSeriesMarkers(priceSeries, []);
 
+    const goalBars = new GoalBarsPrimitive(GOAL_BAR_COLOR);
+    priceSeries.attachPrimitive(goalBars);
+    goalBarsRef.current = goalBars;
+
     // El eje de tiempo necesita datos cargados antes de poder fijar un rango
     // visible (si no, lightweight-charts no puede resolver coordenadas y
     // lanza "Value is null"). Se cargan los datos completos aquí una vez;
@@ -212,6 +220,7 @@ export default function SessionChart({
       zSeriesRef.current = null;
       netgexSeriesRef.current = null;
       markersApiRef.current = null;
+      goalBarsRef.current = null;
     };
   }, [series, events]);
 
@@ -222,7 +231,8 @@ export default function SessionChart({
     const zSeries = zSeriesRef.current;
     const netgexSeries = netgexSeriesRef.current;
     const markersApi = markersApiRef.current;
-    if (!chart || !priceSeries || !zSeries || !netgexSeries || !markersApi) return;
+    const goalBars = goalBarsRef.current;
+    if (!chart || !priceSeries || !zSeries || !netgexSeries || !markersApi || !goalBars) return;
 
     const last = series.length - 1;
     const idx = Math.max(0, Math.min(playIndex ?? last, last));
@@ -243,6 +253,23 @@ export default function SessionChart({
       .filter((m): m is SeriesMarker<Time> => m !== null)
       .sort((a, b) => (a.time as number) - (b.time as number));
     markersApi.setMarkers(markers);
+
+    const touches = events.filter((ev): ev is SessionEvent & { payload: GoalTouchPayload } => ev.type === "goal_touch");
+    const maxVolume = touches.reduce((m, ev) => Math.max(m, ev.payload.volume), 0);
+    const barItems: GoalBarItem[] = touches
+      .filter((ev) => toTime(ev.ts) <= cutoff)
+      .map((ev) => {
+        const pt = nearestPoint(pricePointsRef.current, toTime(ev.ts));
+        if (!pt) return null;
+        return {
+          time: pt.time,
+          price: pt.value,
+          ratio: maxVolume > 0 ? ev.payload.volume / maxVolume : 0,
+          label: GOAL_LABELS[ev.payload.goal] ?? ev.payload.goal,
+        };
+      })
+      .filter((b): b is GoalBarItem => b !== null);
+    goalBars.setItems(barItems);
 
     const atRest = idx === last && highlightEventId == null;
     if (atRest) {
@@ -268,6 +295,10 @@ export default function SessionChart({
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "linear-gradient(90deg,#59aaf8,#ffb300)" }} />
           NETGEX
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-3 rounded-sm" style={{ background: GOAL_BAR_COLOR }} />
+          toques de GOAL (ancho = volumen)
         </span>
       </div>
     </div>
