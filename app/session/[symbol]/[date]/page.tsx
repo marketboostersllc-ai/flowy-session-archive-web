@@ -36,7 +36,7 @@ export default async function SessionPage({ params }: Props) {
   const migrationCount = events.filter((e) => e.type === "goal_migration").length;
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
+    <main className="mx-auto w-full max-w-[1760px] flex-1 px-6 py-10">
       <Link href="/" className="text-sm text-text-faint transition hover:text-gamma">
         ← Archivo de sesión
       </Link>

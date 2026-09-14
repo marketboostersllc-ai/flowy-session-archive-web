@@ -94,7 +94,7 @@ export default function SessionPlayer({
   const isLive = playIndex >= last;
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
       <div className="space-y-3">
         <SessionChart series={series} events={events} playIndex={playIndex} highlightEventId={selectedEventId} />
 
