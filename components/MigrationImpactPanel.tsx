@@ -1,3 +1,5 @@
+"use client";
+
 import { GOAL_LABELS, TICK_SIZE, type SeriesPoint, type SessionEvent, type SessionSymbol } from "@/lib/types";
 import { computeMigrationImpacts, formatHorizon, IMPACT_HORIZONS_SEC } from "@/lib/impact";
 import { formatEtTime } from "@/lib/format";
@@ -18,10 +20,14 @@ export default function MigrationImpactPanel({
   symbol,
   series,
   events,
+  selectedId,
+  onSelect,
 }: {
   symbol: SessionSymbol;
   series: SeriesPoint[];
   events: SessionEvent[];
+  selectedId?: number | null;
+  onSelect?: (id: number) => void;
 }) {
   const impacts = computeMigrationImpacts(series, events, TICK_SIZE[symbol]);
 
@@ -76,26 +82,34 @@ export default function MigrationImpactPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/70">
-            {impacts.map(({ event, payload, moves }) => (
-              <tr key={event.id} className="transition hover:bg-panel-2/50">
-                <td className="whitespace-nowrap px-5 py-2.5 font-[family-name:var(--font-mono)] text-xs text-text-faint">
-                  {formatEtTime(event.ts)}
-                </td>
-                <td className="px-3 py-2.5 text-text">
-                  <span className="text-amber">{GOAL_LABELS[payload.from] ?? payload.from}</span>
-                  <span className="mx-1 text-text-faint">→</span>
-                  <span className="text-amber">{GOAL_LABELS[payload.to] ?? payload.to}</span>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2.5 font-[family-name:var(--font-mono)] text-xs text-text-faint">
-                  {payload.dropAbs.toFixed(0)} / {payload.riseAbs.toFixed(0)}
-                </td>
-                {moves.map((m) => (
-                  <td key={m.horizonSec} className="px-3 py-2.5 text-right font-[family-name:var(--font-mono)]">
-                    <TicksCell ticks={m.ticks} />
+            {impacts.map(({ event, payload, moves }) => {
+              const selected = event.id === selectedId;
+              return (
+                <tr
+                  key={event.id}
+                  onClick={() => onSelect?.(event.id)}
+                  className={`cursor-pointer transition ${selected ? "bg-gamma/10" : "hover:bg-panel-2/50"}`}
+                  style={selected ? { boxShadow: "inset 2px 0 0 var(--gamma)" } : undefined}
+                >
+                  <td className="whitespace-nowrap px-5 py-2.5 font-[family-name:var(--font-mono)] text-xs text-text-faint">
+                    {formatEtTime(event.ts)}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  <td className="px-3 py-2.5 text-text">
+                    <span className="text-amber">{GOAL_LABELS[payload.from] ?? payload.from}</span>
+                    <span className="mx-1 text-text-faint">→</span>
+                    <span className="text-amber">{GOAL_LABELS[payload.to] ?? payload.to}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-[family-name:var(--font-mono)] text-xs text-text-faint">
+                    {payload.dropAbs.toFixed(0)} / {payload.riseAbs.toFixed(0)}
+                  </td>
+                  {moves.map((m) => (
+                    <td key={m.horizonSec} className="px-3 py-2.5 text-right font-[family-name:var(--font-mono)]">
+                      <TicksCell ticks={m.ticks} />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -96,6 +96,16 @@ export function computeSaturationImpacts(series: SeriesPoint[], events: SessionE
   return computeImpacts<SaturationPayload>(series, events, tickSize, "saturation_signal");
 }
 
+/**
+ * Para cada saturación (el momento en que el oscilador ENTRA en la banda de
+ * anomalía, antes de la señal de reversión confirmada), mide cuánto se movió
+ * el precio después — ¿ya se mueve algo desde que satura, o hay que esperar
+ * a la señal confirmada?
+ */
+export function computeArmedImpacts(series: SeriesPoint[], events: SessionEvent[], tickSize: number): SaturationImpact[] {
+  return computeImpacts<SaturationPayload>(series, events, tickSize, "saturation_armed");
+}
+
 export function formatHorizon(sec: number): string {
   if (sec < 60) return `+${sec}s`;
   return `+${Math.round(sec / 60)} min`;

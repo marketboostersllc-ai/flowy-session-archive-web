@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import SessionChart from "./SessionChart";
 import EventTimeline from "./EventTimeline";
-import type { SeriesPoint, SessionEvent } from "@/lib/types";
+import MigrationImpactPanel from "./MigrationImpactPanel";
+import SaturationImpactPanel from "./SaturationImpactPanel";
+import type { SeriesPoint, SessionEvent, SessionSymbol } from "@/lib/types";
 import { formatEtTime } from "@/lib/format";
 
 const SPEEDS = [1, 2, 5, 10, 20] as const;
@@ -36,10 +38,22 @@ function PauseIcon() {
   );
 }
 
+function PanelIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3.5 w-3.5">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="15" y1="4" x2="15" y2="20" />
+      {collapsed ? <path d="M12.5 9l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" /> : <path d="M17.5 9l-3 3 3 3" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+  );
+}
+
 export default function SessionPlayer({
+  symbol,
   series,
   events,
 }: {
+  symbol: SessionSymbol;
   series: SeriesPoint[];
   events: SessionEvent[];
 }) {
@@ -48,7 +62,9 @@ export default function SessionPlayer({
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(5);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [showEvents, setShowEvents] = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chartAnchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!playing) {
@@ -85,6 +101,9 @@ export default function SessionPlayer({
       setPlaying(false);
       setPlayIndex(nearestIndexForTs(series, ev.ts));
       setSelectedEventId(id);
+      // Los paneles de impacto están más abajo en la página: al seleccionar
+      // una fila ahí, sube el gráfico a la vista para que se vea el punto.
+      chartAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
     [events, series]
   );
@@ -94,8 +113,21 @@ export default function SessionPlayer({
   const isLive = playIndex >= last;
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-      <div className="space-y-3">
+    <div>
+      <div ref={chartAnchorRef} />
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowEvents((v) => !v)}
+          className="flex items-center gap-1.5 rounded-full border border-border bg-panel-2 px-3 py-1.5 font-[family-name:var(--font-mono)] text-[11px] text-text-faint transition hover:border-gamma hover:text-gamma"
+        >
+          <PanelIcon collapsed={!showEvents} />
+          {showEvents ? "Ocultar eventos" : "Mostrar eventos"}
+        </button>
+      </div>
+
+      <div className={showEvents ? "grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]" : "grid grid-cols-1 gap-4"}>
+        <div className="space-y-3">
         <SessionChart series={series} events={events} playIndex={playIndex} highlightEventId={selectedEventId} />
 
         <div className="rounded-2xl border border-border bg-panel/80 px-5 py-4">
@@ -152,9 +184,28 @@ export default function SessionPlayer({
             </div>
           </div>
         </div>
+        </div>
+
+        {showEvents && <EventTimeline events={events} selectedId={selectedEventId} onSelect={handleSelectEvent} />}
       </div>
 
-      <EventTimeline events={events} selectedId={selectedEventId} onSelect={handleSelectEvent} />
+      <MigrationImpactPanel symbol={symbol} series={series} events={events} selectedId={selectedEventId} onSelect={handleSelectEvent} />
+      <SaturationImpactPanel
+        kind="armed"
+        symbol={symbol}
+        series={series}
+        events={events}
+        selectedId={selectedEventId}
+        onSelect={handleSelectEvent}
+      />
+      <SaturationImpactPanel
+        kind="signal"
+        symbol={symbol}
+        series={series}
+        events={events}
+        selectedId={selectedEventId}
+        onSelect={handleSelectEvent}
+      />
     </div>
   );
 }
