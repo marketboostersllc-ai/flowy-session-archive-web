@@ -42,10 +42,10 @@ export default function SaturationImpactPanel({
       ? "Ticks que se movió el precio desde que el oscilador ENTRA en la banda de anomalía (antes de la señal confirmada)"
       : "Ticks que se movió el precio tras cada señal (satura y vuelve a cruzar)";
 
-  // Media de |movimiento| al horizonte intermedio (+1 min) y acierto: % de
-  // eventos en los que el precio se movió en la dirección predicha (compra
-  // -> sube, venta -> baja) — ¿anticipa algo real este evento, o es ruido?
-  const midHorizon = IMPACT_HORIZONS_SEC[1];
+  // Media de |movimiento| a 30 min y acierto: % de eventos en los que el
+  // precio se movió en la dirección predicha (compra -> sube, venta ->
+  // baja) — ¿anticipa algo real este evento, o es ruido?
+  const midHorizon = 1800;
   const withMid = impacts
     .map((i) => ({ dir: i.payload.direction, ticks: i.moves.find((m) => m.horizonSec === midHorizon)?.ticks ?? null }))
     .filter((x): x is { dir: "buy" | "sell"; ticks: number } => x.ticks != null);

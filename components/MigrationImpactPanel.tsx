@@ -33,10 +33,10 @@ export default function MigrationImpactPanel({
 
   if (impacts.length === 0) return null;
 
-  // Media de |movimiento| al horizonte intermedio (+1 min), sobre las
-  // migraciones donde ya se conoce el resultado — la métrica que persigues:
-  // cuánto mueve el precio una migración de volumen "típica".
-  const midHorizon = IMPACT_HORIZONS_SEC[1];
+  // Media de |movimiento| a 30 min, sobre las migraciones donde ya se
+  // conoce el resultado — la métrica que persigues: cuánto mueve el precio
+  // una migración de volumen "típica".
+  const midHorizon = 1800;
   const midMoves = impacts.map((i) => i.moves.find((m) => m.horizonSec === midHorizon)?.ticks).filter((t): t is number => t != null);
   const avgAbs = midMoves.length > 0 ? midMoves.reduce((s, t) => s + Math.abs(t), 0) / midMoves.length : null;
   const biggest = midMoves.length > 0 ? midMoves.reduce((b, t) => (Math.abs(t) > Math.abs(b) ? t : b), 0) : null;
