@@ -61,7 +61,24 @@ function nearestPoint(points: PricePoint[], target: UTCTimestamp): PricePoint | 
 
 const GOAL_BAR_COLOR = "#c084fc";
 
-function eventMarker(ev: SessionEvent, time: UTCTimestamp, size: number): SeriesMarker<Time> | null {
+/** Último precio conocido de un goal (por sus toques) en o antes de `atMs`; si no hay ninguno antes, el primero disponible. */
+function goalPriceAt(touchesByGoal: Map<string, { t: number; price: number }[]>, goal: string, atMs: number): number | null {
+  const arr = touchesByGoal.get(goal);
+  if (!arr || arr.length === 0) return null;
+  let best: number | null = null;
+  for (const pt of arr) {
+    if (pt.t <= atMs) best = pt.price;
+    else break;
+  }
+  return best ?? arr[0].price;
+}
+
+function eventMarker(
+  ev: SessionEvent,
+  time: UTCTimestamp,
+  size: number,
+  touchesByGoal: Map<string, { t: number; price: number }[]>
+): SeriesMarker<Time> | null {
   const id = String(ev.id);
   // goal_touch ya no se dibuja como marcador: lo pinta GoalBarsPrimitive
   // como barra horizontal (ancho ∝ volumen), igual que en ATAS.
@@ -91,7 +108,25 @@ function eventMarker(ev: SessionEvent, time: UTCTimestamp, size: number): Series
     };
   }
   if (ev.type === "goal_migration") {
-    return { id, time, position: "aboveBar", color: "#ffb300", shape: "square", text: "migración", size };
+    const p = ev.payload as { from: string; to: string };
+    const atMs = new Date(ev.ts).getTime();
+    const fromPrice = goalPriceAt(touchesByGoal, p.from, atMs);
+    const toPrice = goalPriceAt(touchesByGoal, p.to, atMs);
+    // El volumen migra del goal "from" al goal "to": si el destino está por
+    // encima del origen, el volumen sube (flecha arriba) y viceversa.
+    const up = fromPrice != null && toPrice != null ? toPrice > fromPrice : null;
+    if (up == null) {
+      return { id, time, position: "aboveBar", color: "#ffb300", shape: "square", text: "migración", size };
+    }
+    return {
+      id,
+      time,
+      position: up ? "belowBar" : "aboveBar",
+      color: "#ffb300",
+      shape: up ? "arrowUp" : "arrowDown",
+      text: "migración",
+      size,
+    };
   }
   return null;
 }
@@ -276,18 +311,28 @@ export default function SessionChart({
     netgexSeries.setData(netgexPointsRef.current.slice(0, idx + 1));
 
     const cutoff = toTime(series[idx].ts);
+
+    const touches = events.filter((ev): ev is SessionEvent & { payload: GoalTouchPayload } => ev.type === "goal_touch");
+    const touchesByGoal = new Map<string, { t: number; price: number }[]>();
+    for (const ev of touches) {
+      const t = new Date(ev.ts).getTime();
+      const arr = touchesByGoal.get(ev.payload.goal);
+      if (arr) arr.push({ t, price: ev.payload.price });
+      else touchesByGoal.set(ev.payload.goal, [{ t, price: ev.payload.price }]);
+    }
+    for (const arr of touchesByGoal.values()) arr.sort((a, b) => a.t - b.t);
+
     const markers = events
       .filter((ev) => toTime(ev.ts) <= cutoff)
       .map((ev) => {
         const pt = nearestPoint(pricePointsRef.current, toTime(ev.ts));
         if (!pt) return null;
-        return eventMarker(ev, pt.time, ev.id === highlightEventId ? 2.4 : 1);
+        return eventMarker(ev, pt.time, ev.id === highlightEventId ? 2.4 : 1, touchesByGoal);
       })
       .filter((m): m is SeriesMarker<Time> => m !== null)
       .sort((a, b) => (a.time as number) - (b.time as number));
     markersApi.setMarkers(markers);
 
-    const touches = events.filter((ev): ev is SessionEvent & { payload: GoalTouchPayload } => ev.type === "goal_touch");
     const maxVolume = touches.reduce((m, ev) => Math.max(m, ev.payload.volume), 0);
     const barItems: GoalBarItem[] = touches
       .filter((ev) => toTime(ev.ts) <= cutoff)
