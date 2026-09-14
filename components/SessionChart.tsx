@@ -60,6 +60,8 @@ function nearestPoint(points: PricePoint[], target: UTCTimestamp): PricePoint | 
 }
 
 const GOAL_BAR_COLOR = "#c084fc";
+// Claves crudas de los goals "+" (Vol/OI) — ver GOAL_LABELS en lib/types.ts.
+const POSITIVE_GOAL_KEYS = new Set(["classicMajorPosVol", "goalCall"]);
 
 /** Último precio conocido de un goal (por sus toques) en o antes de `atMs`; si no hay ninguno antes, el primero disponible. */
 function goalPriceAt(touchesByGoal: Map<string, { t: number; price: number }[]>, goal: string, atMs: number): number | null {
@@ -115,14 +117,16 @@ function eventMarker(
     // El volumen migra del goal "from" al goal "to": si el destino está por
     // encima del origen, el volumen sube (flecha arriba) y viceversa.
     const up = fromPrice != null && toPrice != null ? toPrice > fromPrice : null;
+    // Verde si el destino es un Goal + (Vol/OI), ámbar si es un Goal -.
+    const color = POSITIVE_GOAL_KEYS.has(p.to) ? "#28f7bf" : "#ffb300";
     if (up == null) {
-      return { id, time, position: "aboveBar", color: "#ffb300", shape: "square", text: "migración", size };
+      return { id, time, position: "aboveBar", color, shape: "square", text: "migración", size };
     }
     return {
       id,
       time,
       position: up ? "belowBar" : "aboveBar",
-      color: "#ffb300",
+      color,
       shape: up ? "arrowUp" : "arrowDown",
       text: "migración",
       size,
