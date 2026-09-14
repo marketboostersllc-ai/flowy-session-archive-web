@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import SessionChart from "@/components/SessionChart";
-import EventTimeline from "@/components/EventTimeline";
+import SessionView from "@/components/SessionView";
 import { getSession } from "@/lib/data";
 import type { SessionSymbol } from "@/lib/types";
 
@@ -68,10 +67,7 @@ export default async function SessionPage({ params }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-        <SessionChart series={series} events={events} />
-        <EventTimeline events={events} />
-      </div>
+      <SessionView series={series} events={events} />
     </main>
   );
 }
