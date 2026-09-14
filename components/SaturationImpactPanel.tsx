@@ -1,7 +1,7 @@
 "use client";
 
 import { TICK_SIZE, type SeriesPoint, type SessionEvent, type SessionSymbol } from "@/lib/types";
-import { computeArmedImpacts, computeSaturationImpacts, formatHorizon, IMPACT_HORIZONS_SEC } from "@/lib/impact";
+import { computeArmedImpacts, computeSaturationImpacts, formatHorizon, formatHorizonList, IMPACT_HORIZONS_SEC } from "@/lib/impact";
 import { formatEtTime } from "@/lib/format";
 
 function TicksCell({ ticks }: { ticks: number | null }) {
@@ -59,7 +59,7 @@ export default function SaturationImpactPanel({
         <div>
           <h2 className="font-[family-name:var(--font-heading)] text-sm tracking-wide text-text-dim">{title}</h2>
           <p className="mt-1 text-xs text-text-faint">
-            {description} — {formatHorizon(IMPACT_HORIZONS_SEC[0])}, {formatHorizon(midHorizon)} y {formatHorizon(IMPACT_HORIZONS_SEC[2])} después.
+            {description} — {formatHorizonList()} después.
           </p>
         </div>
         {avgAbs != null && (

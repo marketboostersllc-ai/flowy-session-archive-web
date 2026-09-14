@@ -1,7 +1,7 @@
 import type { MigrationPayload, SaturationPayload, SeriesPoint, SessionEvent } from "./types";
 
 /** Horizontes tras el evento en los que se mide el movimiento de precio. */
-export const IMPACT_HORIZONS_SEC = [30, 60, 300] as const;
+export const IMPACT_HORIZONS_SEC = [30, 60, 300, 1200] as const;
 
 export interface EventMove {
   horizonSec: number;
@@ -109,4 +109,11 @@ export function computeArmedImpacts(series: SeriesPoint[], events: SessionEvent[
 export function formatHorizon(sec: number): string {
   if (sec < 60) return `+${sec}s`;
   return `+${Math.round(sec / 60)} min`;
+}
+
+/** "+30s, +1 min, +5 min y +20 min" — para las descripciones de los paneles. */
+export function formatHorizonList(horizons: readonly number[] = IMPACT_HORIZONS_SEC): string {
+  const labels = horizons.map(formatHorizon);
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} y ${labels[labels.length - 1]}`;
 }

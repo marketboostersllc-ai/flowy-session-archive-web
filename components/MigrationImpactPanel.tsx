@@ -1,7 +1,7 @@
 "use client";
 
 import { GOAL_LABELS, TICK_SIZE, type SeriesPoint, type SessionEvent, type SessionSymbol } from "@/lib/types";
-import { computeMigrationImpacts, formatHorizon, IMPACT_HORIZONS_SEC } from "@/lib/impact";
+import { computeMigrationImpacts, formatHorizon, formatHorizonList, IMPACT_HORIZONS_SEC } from "@/lib/impact";
 import { formatEtTime } from "@/lib/format";
 
 function TicksCell({ ticks }: { ticks: number | null }) {
@@ -49,8 +49,7 @@ export default function MigrationImpactPanel({
             IMPACTO DE LAS MIGRACIONES EN EL PRECIO
           </h2>
           <p className="mt-1 text-xs text-text-faint">
-            Ticks que se movió el precio tras cada migración de volumen entre goals — {formatHorizon(IMPACT_HORIZONS_SEC[0])},{" "}
-            {formatHorizon(midHorizon)} y {formatHorizon(IMPACT_HORIZONS_SEC[2])} después.
+            Ticks que se movió el precio tras cada migración de volumen entre goals — {formatHorizonList()} después.
           </p>
         </div>
         {avgAbs != null && (
