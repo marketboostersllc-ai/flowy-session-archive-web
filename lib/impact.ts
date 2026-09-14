@@ -106,6 +106,82 @@ export function computeArmedImpacts(series: SeriesPoint[], events: SessionEvent[
   return computeImpacts<SaturationPayload>(series, events, tickSize, "saturation_armed");
 }
 
+export interface EventExcursion<P> {
+  event: SessionEvent;
+  payload: P;
+  /** "Máximo": ticks que llegó a moverse el precio a favor, desde el evento hasta el cierre de sesión. */
+  favorTicks: number | null;
+  /** "Dilatación": ticks que llegó a moverse el precio en contra, desde el evento hasta el cierre de sesión. */
+  againstTicks: number | null;
+}
+
+export type MigrationExcursion = EventExcursion<MigrationPayload>;
+export type SaturationExcursion = EventExcursion<SaturationPayload>;
+
+/**
+ * Recorrido máximo a favor y dilatación (máximo en contra) desde un evento
+ * hasta el cierre de sesión — a diferencia de computeImpacts (que mira un
+ * puñado de horizontes fijos), aquí se recorre CADA punto restante de la
+ * sesión para encontrar el pico y el valle.
+ *
+ * `directionOf` da la dirección esperada (+1 al alza, -1 a la baja) cuando
+ * el evento la declara (saturaciones/señales: compra/venta). Las
+ * migraciones no declaran dirección, así que se usa `null`: en ese caso
+ * "a favor" es el mayor de los dos recorridos (al alza o a la baja) —
+ * el que el precio terminó favoreciendo — y "dilatación" el contrario.
+ */
+function computeExcursions<P>(
+  series: SeriesPoint[],
+  events: SessionEvent[],
+  tickSize: number,
+  eventType: SessionEvent["type"],
+  directionOf: (payload: P) => 1 | -1 | null
+): EventExcursion<P>[] {
+  const points = buildPricePoints(series);
+  if (points.length === 0) return [];
+
+  return events
+    .filter((e) => e.type === eventType)
+    .map((event) => {
+      const payload = event.payload as P;
+      const tMs = new Date(event.ts).getTime();
+      const entryPrice = priceAtOrBefore(points, tMs);
+      if (entryPrice == null) return { event, payload, favorTicks: null, againstTicks: null };
+
+      let upTicks = 0;
+      let downTicks = 0;
+      for (const p of points) {
+        if (p.t < tMs) continue;
+        const diff = (p.price - entryPrice) / tickSize;
+        if (diff > upTicks) upTicks = diff;
+        if (-diff > downTicks) downTicks = -diff;
+      }
+
+      const dir = directionOf(payload);
+      const favorTicks = dir === 1 ? upTicks : dir === -1 ? downTicks : Math.max(upTicks, downTicks);
+      const againstTicks = dir === 1 ? downTicks : dir === -1 ? upTicks : Math.min(upTicks, downTicks);
+      return {
+        event,
+        payload,
+        favorTicks: Number(favorTicks.toFixed(1)),
+        againstTicks: Number(againstTicks.toFixed(1)),
+      };
+    })
+    .sort((a, b) => a.event.ts.localeCompare(b.event.ts));
+}
+
+export function computeMigrationExcursions(series: SeriesPoint[], events: SessionEvent[], tickSize: number): MigrationExcursion[] {
+  return computeExcursions<MigrationPayload>(series, events, tickSize, "goal_migration", () => null);
+}
+
+export function computeArmedExcursions(series: SeriesPoint[], events: SessionEvent[], tickSize: number): SaturationExcursion[] {
+  return computeExcursions<SaturationPayload>(series, events, tickSize, "saturation_armed", (p) => (p.direction === "buy" ? 1 : -1));
+}
+
+export function computeSignalExcursions(series: SeriesPoint[], events: SessionEvent[], tickSize: number): SaturationExcursion[] {
+  return computeExcursions<SaturationPayload>(series, events, tickSize, "saturation_signal", (p) => (p.direction === "buy" ? 1 : -1));
+}
+
 export function formatHorizon(sec: number): string {
   if (sec < 60) return `+${sec}s`;
   if (sec % 3600 === 0) return `+${sec / 3600}h`;

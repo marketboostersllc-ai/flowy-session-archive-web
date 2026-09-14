@@ -5,6 +5,7 @@ import SessionChart from "./SessionChart";
 import EventTimeline from "./EventTimeline";
 import MigrationImpactPanel from "./MigrationImpactPanel";
 import SaturationImpactPanel from "./SaturationImpactPanel";
+import ExcursionPanel from "./ExcursionPanel";
 import type { SeriesPoint, SessionEvent, SessionSymbol } from "@/lib/types";
 import { formatEtTime } from "@/lib/format";
 
@@ -206,6 +207,10 @@ export default function SessionPlayer({
         selectedId={selectedEventId}
         onSelect={handleSelectEvent}
       />
+
+      <ExcursionPanel kind="migration" symbol={symbol} series={series} events={events} selectedId={selectedEventId} onSelect={handleSelectEvent} />
+      <ExcursionPanel kind="armed" symbol={symbol} series={series} events={events} selectedId={selectedEventId} onSelect={handleSelectEvent} />
+      <ExcursionPanel kind="signal" symbol={symbol} series={series} events={events} selectedId={selectedEventId} onSelect={handleSelectEvent} />
     </div>
   );
 }
