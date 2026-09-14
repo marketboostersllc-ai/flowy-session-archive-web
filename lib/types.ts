@@ -3,10 +3,10 @@ export type SessionSymbol = "NQ" | "ES";
 export const TICK_SIZE: Record<SessionSymbol, number> = { NQ: 0.25, ES: 0.25 };
 
 export const GOAL_LABELS: Record<string, string> = {
-  classicMajorPosVol: "M+Vol",
-  classicMajorNegVol: "M-Vol",
-  goalCall: "M+OI (call)",
-  goalPut: "M-OI (put)",
+  classicMajorPosVol: "Goal + (Vol)",
+  classicMajorNegVol: "Goal - (Vol)",
+  goalCall: "Goal + (OI)",
+  goalPut: "Goal - (OI)",
 };
 
 export interface SessionDay {
