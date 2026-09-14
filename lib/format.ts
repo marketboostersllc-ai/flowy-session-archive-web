@@ -38,7 +38,9 @@ export function describeEvent(ev: SessionEvent): string {
     }
     case "goal_migration": {
       const p = ev.payload as { from: string; to: string; dropAbs: number; riseAbs: number };
-      return `Migración de volumen: ${GOAL_LABELS[p.from] ?? p.from} → ${GOAL_LABELS[p.to] ?? p.to}`;
+      return `Migración de volumen: ${GOAL_LABELS[p.from] ?? p.from} → ${GOAL_LABELS[p.to] ?? p.to} — ${p.dropAbs.toFixed(
+        0
+      )} / ${p.riseAbs.toFixed(0)}`;
     }
     default:
       return ev.type;
