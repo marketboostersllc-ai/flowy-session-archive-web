@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import {
+  BaselineSeries,
   createChart,
   createSeriesMarkers,
-  LineSeries,
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
@@ -33,11 +33,11 @@ function nearestPoint(points: PricePoint[], target: UTCTimestamp): PricePoint | 
   return points[lo];
 }
 
-function eventMarker(ev: SessionEvent, time: UTCTimestamp): SeriesMarker<Time> | null {
+function eventMarker(ev: SessionEvent, time: UTCTimestamp, size: number): SeriesMarker<Time> | null {
   const id = String(ev.id);
   if (ev.type === "goal_touch") {
     const p = ev.payload as { goal: string };
-    return { id, time, position: "belowBar", color: "#a855f7", shape: "circle", text: GOAL_LABELS[p.goal] ?? p.goal, size: 1 };
+    return { id, time, position: "belowBar", color: "#c084fc", shape: "circle", text: GOAL_LABELS[p.goal] ?? p.goal, size };
   }
   if (ev.type === "saturation_armed") {
     const p = ev.payload as { direction: "buy" | "sell" };
@@ -48,7 +48,7 @@ function eventMarker(ev: SessionEvent, time: UTCTimestamp): SeriesMarker<Time> |
       color: p.direction === "buy" ? "#28f7bf" : "#fc374a",
       shape: p.direction === "buy" ? "arrowUp" : "arrowDown",
       text: "satura",
-      size: 1,
+      size,
     };
   }
   if (ev.type === "saturation_signal") {
@@ -60,11 +60,11 @@ function eventMarker(ev: SessionEvent, time: UTCTimestamp): SeriesMarker<Time> |
       color: p.direction === "buy" ? "#28f7bf" : "#fc374a",
       shape: p.direction === "buy" ? "arrowUp" : "arrowDown",
       text: p.direction === "buy" ? "COMPRA" : "VENTA",
-      size: 1,
+      size,
     };
   }
   if (ev.type === "goal_migration") {
-    return { id, time, position: "aboveBar", color: "#ffb300", shape: "square", text: "migración", size: 1 };
+    return { id, time, position: "aboveBar", color: "#ffb300", shape: "square", text: "migración", size };
   }
   return null;
 }
@@ -72,22 +72,28 @@ function eventMarker(ev: SessionEvent, time: UTCTimestamp): SeriesMarker<Time> |
 export default function SessionChart({
   series,
   events,
-  focusEventId,
-  onClear,
+  playIndex,
+  highlightEventId,
 }: {
   series: SeriesPoint[];
   events: SessionEvent[];
-  focusEventId?: number | null;
-  onClear?: () => void;
+  /** Índice (en `series`) hasta el que se revela la sesión. Por defecto, toda. */
+  playIndex?: number;
+  highlightEventId?: number | null;
 }) {
   const priceRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const priceSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const priceSeriesRef = useRef<ISeriesApi<"Baseline"> | null>(null);
+  const zSeriesRef = useRef<ISeriesApi<"Baseline"> | null>(null);
+  const netgexSeriesRef = useRef<ISeriesApi<"Baseline"> | null>(null);
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-  const baseMarkersRef = useRef<SeriesMarker<Time>[]>([]);
   const pricePointsRef = useRef<PricePoint[]>([]);
+  const zPointsRef = useRef<PricePoint[]>([]);
+  const netgexPointsRef = useRef<PricePoint[]>([]);
 
-  // Construye el gráfico una vez por sesión (cambia solo si cambian los datos).
+  // Construye el gráfico una vez por sesión. El eje de tiempo se fija al
+  // rango COMPLETO desde el principio y ya no se toca — así, al reproducir,
+  // la línea "crece" dentro de un marco fijo en vez de reencuadrar cada tick.
   useEffect(() => {
     if (!priceRef.current) return;
 
@@ -96,112 +102,173 @@ export default function SessionChart({
         background: { color: "transparent" },
         textColor: "#9aa1b4",
         fontFamily: "var(--font-mono)",
-        panes: { separatorColor: "#262b38" },
+        panes: { separatorColor: "#1c2029" },
       },
       grid: {
-        vertLines: { color: "#1a1e28" },
-        horzLines: { color: "#1a1e28" },
+        vertLines: { color: "#161a23" },
+        horzLines: { color: "#161a23" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#262b38" },
-      rightPriceScale: { borderColor: "#262b38" },
-      crosshair: { mode: 0 },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#232838" },
+      rightPriceScale: { borderColor: "#232838" },
+      crosshair: {
+        mode: 0,
+        vertLine: { color: "#59aaf866", labelBackgroundColor: "#59aaf8" },
+        horzLine: { color: "#59aaf866", labelBackgroundColor: "#59aaf8" },
+      },
       autoSize: true,
     });
     chartRef.current = chart;
 
-    const pricePoints: PricePoint[] = series
-      .filter((p) => p.price != null)
-      .map((p) => ({ time: toTime(p.ts), value: p.price as number }));
-    pricePointsRef.current = pricePoints;
+    pricePointsRef.current = series.filter((p) => p.price != null).map((p) => ({ time: toTime(p.ts), value: p.price as number }));
+    zPointsRef.current = series.filter((p) => p.z != null).map((p) => ({ time: toTime(p.ts), value: p.z as number }));
+    netgexPointsRef.current = series.filter((p) => p.netgex != null).map((p) => ({ time: toTime(p.ts), value: p.netgex as number }));
 
-    const priceSeries = chart.addSeries(LineSeries, { color: "#59aaf8", lineWidth: 2, priceLineVisible: false }, 0);
-    priceSeries.setData(pricePoints);
+    const openPrice = pricePointsRef.current[0]?.value ?? 0;
+    const priceSeries = chart.addSeries(
+      BaselineSeries,
+      {
+        baseValue: { type: "price", price: openPrice },
+        topLineColor: "#28f7bf",
+        topFillColor1: "rgba(40, 247, 191, 0.32)",
+        topFillColor2: "rgba(40, 247, 191, 0.02)",
+        bottomLineColor: "#fc374a",
+        bottomFillColor1: "rgba(252, 55, 74, 0.02)",
+        bottomFillColor2: "rgba(252, 55, 74, 0.26)",
+        lineWidth: 2,
+        priceLineVisible: false,
+      },
+      0
+    );
     priceSeriesRef.current = priceSeries;
+    if (pricePointsRef.current.length > 0) {
+      priceSeries.createPriceLine({
+        price: openPrice,
+        color: "#5c647899",
+        lineStyle: 3,
+        lineWidth: 1,
+        title: "apertura",
+        axisLabelVisible: false,
+      });
+    }
 
-    const zPoints = series.filter((p) => p.z != null).map((p) => ({ time: toTime(p.ts), value: p.z as number }));
-    const zSeries = chart.addSeries(LineSeries, { color: "#e8eaf0", lineWidth: 1, priceLineVisible: false }, 1);
-    zSeries.setData(zPoints);
-    zSeries.createPriceLine({ price: 2.5, color: "#ffb30099", lineStyle: 2, title: "+2.5σ", axisLabelVisible: true, lineWidth: 1 });
-    zSeries.createPriceLine({ price: -2.5, color: "#ffb30099", lineStyle: 2, title: "-2.5σ", axisLabelVisible: true, lineWidth: 1 });
-    zSeries.createPriceLine({ price: 0, color: "#5c6478", lineStyle: 3, title: "", axisLabelVisible: false, lineWidth: 1 });
+    const zSeries = chart.addSeries(
+      BaselineSeries,
+      {
+        baseValue: { type: "price", price: 0 },
+        topLineColor: "#fc374a",
+        topFillColor1: "rgba(252, 55, 74, 0.30)",
+        topFillColor2: "rgba(252, 55, 74, 0.02)",
+        bottomLineColor: "#28f7bf",
+        bottomFillColor1: "rgba(40, 247, 191, 0.02)",
+        bottomFillColor2: "rgba(40, 247, 191, 0.30)",
+        lineWidth: 1,
+        priceLineVisible: false,
+      },
+      1
+    );
+    zSeriesRef.current = zSeries;
+    zSeries.createPriceLine({ price: 2.5, color: "#ffb300aa", lineStyle: 2, title: "+2.5σ", axisLabelVisible: true, lineWidth: 1 });
+    zSeries.createPriceLine({ price: -2.5, color: "#ffb300aa", lineStyle: 2, title: "-2.5σ", axisLabelVisible: true, lineWidth: 1 });
 
-    const netgexPoints = series.filter((p) => p.netgex != null).map((p) => ({ time: toTime(p.ts), value: p.netgex as number }));
-    const netgexSeries = chart.addSeries(LineSeries, { color: "#28f7bf", lineWidth: 1, priceLineVisible: false }, 2);
-    netgexSeries.setData(netgexPoints);
+    const netgexSeries = chart.addSeries(
+      BaselineSeries,
+      {
+        baseValue: { type: "price", price: 0 },
+        topLineColor: "#59aaf8",
+        topFillColor1: "rgba(89, 170, 248, 0.28)",
+        topFillColor2: "rgba(89, 170, 248, 0.02)",
+        bottomLineColor: "#ffb300",
+        bottomFillColor1: "rgba(255, 179, 0, 0.02)",
+        bottomFillColor2: "rgba(255, 179, 0, 0.24)",
+        lineWidth: 1,
+        priceLineVisible: false,
+      },
+      2
+    );
+    netgexSeriesRef.current = netgexSeries;
 
     const panes = chart.panes();
     if (panes[0]) panes[0].setHeight(320);
     if (panes[1]) panes[1].setHeight(140);
     if (panes[2]) panes[2].setHeight(100);
 
-    const markers = events
-      .map((ev) => {
-        const pt = nearestPoint(pricePoints, toTime(ev.ts));
-        return pt ? eventMarker(ev, pt.time) : null;
-      })
-      .filter((m): m is SeriesMarker<Time> => m !== null)
-      .sort((a, b) => (a.time as number) - (b.time as number));
-    baseMarkersRef.current = markers;
-    markersApiRef.current = createSeriesMarkers(priceSeries, markers);
+    markersApiRef.current = createSeriesMarkers(priceSeries, []);
 
-    chart.timeScale().fitContent();
+    // El eje de tiempo necesita datos cargados antes de poder fijar un rango
+    // visible (si no, lightweight-charts no puede resolver coordenadas y
+    // lanza "Value is null"). Se cargan los datos completos aquí una vez;
+    // el segundo efecto los recorta enseguida según `playIndex`.
+    if (series.length > 0) {
+      priceSeries.setData(pricePointsRef.current);
+      zSeries.setData(zPointsRef.current);
+      netgexSeries.setData(netgexPointsRef.current);
+      chart.timeScale().setVisibleRange({ from: toTime(series[0].ts), to: toTime(series[series.length - 1].ts) });
+    }
 
     return () => {
       chart.remove();
       chartRef.current = null;
       priceSeriesRef.current = null;
+      zSeriesRef.current = null;
+      netgexSeriesRef.current = null;
       markersApiRef.current = null;
     };
   }, [series, events]);
 
-  // Señala el evento seleccionado: centra el eje de tiempo en ese instante y
-  // marca el punto exacto con el crosshair + agranda su marcador.
+  // Revela los datos hasta `playIndex` (reproducción/slider/clic en evento).
   useEffect(() => {
     const chart = chartRef.current;
     const priceSeries = priceSeriesRef.current;
+    const zSeries = zSeriesRef.current;
+    const netgexSeries = netgexSeriesRef.current;
     const markersApi = markersApiRef.current;
-    if (!chart || !priceSeries || !markersApi) return;
+    if (!chart || !priceSeries || !zSeries || !netgexSeries || !markersApi) return;
 
-    if (focusEventId == null) {
+    const last = series.length - 1;
+    const idx = Math.max(0, Math.min(playIndex ?? last, last));
+    if (last < 0) return;
+
+    priceSeries.setData(pricePointsRef.current.slice(0, idx + 1));
+    zSeries.setData(zPointsRef.current.slice(0, idx + 1));
+    netgexSeries.setData(netgexPointsRef.current.slice(0, idx + 1));
+
+    const cutoff = toTime(series[idx].ts);
+    const markers = events
+      .filter((ev) => toTime(ev.ts) <= cutoff)
+      .map((ev) => {
+        const pt = nearestPoint(pricePointsRef.current, toTime(ev.ts));
+        if (!pt) return null;
+        return eventMarker(ev, pt.time, ev.id === highlightEventId ? 2.4 : 1);
+      })
+      .filter((m): m is SeriesMarker<Time> => m !== null)
+      .sort((a, b) => (a.time as number) - (b.time as number));
+    markersApi.setMarkers(markers);
+
+    const atRest = idx === last && highlightEventId == null;
+    if (atRest) {
       chart.clearCrosshairPosition();
-      markersApi.setMarkers(baseMarkersRef.current);
-      return;
+    } else {
+      const pt = pricePointsRef.current[idx] ?? nearestPoint(pricePointsRef.current, cutoff);
+      if (pt) chart.setCrosshairPosition(pt.value, pt.time, priceSeries);
     }
-
-    const ev = events.find((e) => e.id === focusEventId);
-    if (!ev) return;
-    const pt = nearestPoint(pricePointsRef.current, toTime(ev.ts));
-    if (!pt) return;
-
-    chart.setCrosshairPosition(pt.value, pt.time, priceSeries);
-    markersApi.setMarkers(
-      baseMarkersRef.current.map((m) => (m.id === String(focusEventId) ? { ...m, size: 2.4 } : m))
-    );
-
-    const span = 8 * 60; // ±8 min de contexto alrededor del evento
-    chart.timeScale().setVisibleRange({ from: (pt.time - span) as UTCTimestamp, to: (pt.time + span) as UTCTimestamp });
-  }, [focusEventId, events]);
+  }, [series, events, playIndex, highlightEventId]);
 
   return (
-    <div className="w-full rounded-xl border border-border bg-panel p-3">
+    <div className="w-full rounded-2xl border border-border bg-panel/80 p-4 shadow-[0_0_0_1px_rgba(89,170,248,0.05),0_20px_60px_-30px_rgba(89,170,248,0.35)]">
       <div ref={priceRef} className="h-[580px] w-full" />
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-text-faint font-[family-name:var(--font-mono)]">
-        <span className="text-gamma">— precio</span>
-        <span className="text-text-dim">— oscilador (z)</span>
-        <span className="text-volt">— NETGEX</span>
-        {focusEventId != null && (
-          <button
-            type="button"
-            onClick={() => {
-              chartRef.current?.clearCrosshairPosition();
-              chartRef.current?.timeScale().fitContent();
-              onClear?.();
-            }}
-            className="ml-auto rounded border border-border px-2 py-0.5 text-text-dim transition hover:border-gamma hover:text-gamma"
-          >
-            ver sesión completa
-          </button>
-        )}
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 px-1 text-xs font-[family-name:var(--font-mono)] text-text-faint">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "linear-gradient(90deg,#28f7bf,#fc374a)" }} />
+          precio (vs. apertura)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "linear-gradient(90deg,#fc374a,#28f7bf)" }} />
+          oscilador (z)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "linear-gradient(90deg,#59aaf8,#ffb300)" }} />
+          NETGEX
+        </span>
       </div>
     </div>
   );

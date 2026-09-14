@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import SessionView from "@/components/SessionView";
+import SessionPlayer from "@/components/SessionPlayer";
+import MigrationImpactPanel from "@/components/MigrationImpactPanel";
 import { getSession } from "@/lib/data";
 import type { SessionSymbol } from "@/lib/types";
 
@@ -41,33 +42,34 @@ export default async function SessionPage({ params }: Props) {
 
       <header className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-[family-name:var(--font-mono)] text-xs tracking-[0.2em] text-gamma">
+          <p className="font-[family-name:var(--font-mono)] text-xs font-semibold tracking-[0.25em] text-gamma">
             {session.symbol}
           </p>
-          <h1 className="mt-1 font-[family-name:var(--font-heading)] text-2xl font-semibold capitalize text-text">
+          <h1 className="mt-1 font-[family-name:var(--font-heading)] text-3xl font-semibold capitalize text-text">
             {formatDateEs(session.session_date)}
           </h1>
         </div>
-        <div className="flex gap-4 font-[family-name:var(--font-mono)] text-xs text-text-dim">
-          <span>
-            <span className="text-purple">{touchCount}</span> toques
+        <div className="flex gap-2 font-[family-name:var(--font-mono)] text-xs">
+          <span className="rounded-full border border-purple/30 bg-purple/10 px-3 py-1.5 text-purple">
+            {touchCount} toques
           </span>
-          <span>
-            <span className="text-press">{signalCount}</span> señales
+          <span className="rounded-full border border-press/30 bg-press/10 px-3 py-1.5 text-press">
+            {signalCount} señales
           </span>
-          <span>
-            <span className="text-amber">{migrationCount}</span> migraciones
+          <span className="rounded-full border border-amber/30 bg-amber/10 px-3 py-1.5 text-amber">
+            {migrationCount} migraciones
           </span>
         </div>
       </header>
 
       {mode === "mock" && (
-        <div className="mb-6 rounded-lg border border-amber/30 bg-amber/10 px-4 py-3 text-sm text-amber">
+        <div className="mb-6 rounded-xl border border-amber/30 bg-amber/10 px-4 py-3 text-sm text-amber">
           Datos de ejemplo — el archivo real se activa en cuanto haya sesiones grabadas.
         </div>
       )}
 
-      <SessionView series={series} events={events} />
+      <SessionPlayer series={series} events={events} />
+      <MigrationImpactPanel symbol={session.symbol} series={series} events={events} />
     </main>
   );
 }

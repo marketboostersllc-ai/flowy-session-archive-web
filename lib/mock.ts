@@ -6,6 +6,7 @@ import type {
   SeriesPoint,
   SessionSymbol,
 } from "./types";
+import { TICK_SIZE } from "./types";
 
 // PRNG determinista (mulberry32): mismos datos de ejemplo en cada carga para
 // una fecha+símbolo dados, en vez de aleatorio distinto cada vez.
@@ -29,7 +30,6 @@ function hashSeed(s: string): number {
 const GOAL_KEYS = ["classicMajorPosVol", "classicMajorNegVol", "goalCall", "goalPut"];
 
 const SYMBOL_BASE_PRICE: Record<SessionSymbol, number> = { NQ: 19850, ES: 5620 };
-const SYMBOL_TICK: Record<SessionSymbol, number> = { NQ: 0.25, ES: 0.25 };
 
 function businessDays(count: number): string[] {
   const out: string[] = [];
@@ -57,7 +57,7 @@ export function mockSessionList(): SessionListEntry[] {
 export function mockSessionData(symbol: SessionSymbol, sessionDate: string): SessionData {
   const rand = mulberry32(hashSeed(`${symbol}|${sessionDate}`));
   const basePrice = SYMBOL_BASE_PRICE[symbol];
-  const tick = SYMBOL_TICK[symbol];
+  const tick = TICK_SIZE[symbol];
 
   const openedAt = new Date(`${sessionDate}T13:30:00.000Z`);
   const closedAt = new Date(`${sessionDate}T20:00:00.000Z`);
