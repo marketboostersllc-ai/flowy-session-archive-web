@@ -1,7 +1,7 @@
 import type { MigrationPayload, SaturationPayload, SeriesPoint, SessionEvent } from "./types";
 
 /** Horizontes tras el evento en los que se mide el movimiento de precio. */
-export const IMPACT_HORIZONS_SEC = [30, 60, 300, 1200, 3600] as const;
+export const IMPACT_HORIZONS_SEC = [60, 300, 1200, 3600] as const;
 
 export interface EventMove {
   horizonSec: number;
