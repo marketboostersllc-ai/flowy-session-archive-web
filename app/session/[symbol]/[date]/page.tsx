@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import SessionPlayer from "@/components/SessionPlayer";
 import MigrationImpactPanel from "@/components/MigrationImpactPanel";
+import SaturationImpactPanel from "@/components/SaturationImpactPanel";
 import { getSession } from "@/lib/data";
 import type { SessionSymbol } from "@/lib/types";
 
@@ -70,6 +71,7 @@ export default async function SessionPage({ params }: Props) {
 
       <SessionPlayer series={series} events={events} />
       <MigrationImpactPanel symbol={session.symbol} series={series} events={events} />
+      <SaturationImpactPanel symbol={session.symbol} series={series} events={events} />
     </main>
   );
 }

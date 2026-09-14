@@ -1,19 +1,22 @@
-import type { MigrationPayload, SeriesPoint, SessionEvent } from "./types";
+import type { MigrationPayload, SaturationPayload, SeriesPoint, SessionEvent } from "./types";
 
-/** Horizontes tras la migración en los que se mide el movimiento de precio. */
+/** Horizontes tras el evento en los que se mide el movimiento de precio. */
 export const IMPACT_HORIZONS_SEC = [30, 60, 300] as const;
 
-export interface MigrationMove {
+export interface EventMove {
   horizonSec: number;
   ticks: number | null; // null si la sesión terminó antes de llegar a ese horizonte
 }
 
-export interface MigrationImpact {
+export interface EventImpact<P> {
   event: SessionEvent;
-  payload: MigrationPayload;
+  payload: P;
   priceAt: number | null;
-  moves: MigrationMove[];
+  moves: EventMove[];
 }
+
+export type MigrationImpact = EventImpact<MigrationPayload>;
+export type SaturationImpact = EventImpact<SaturationPayload>;
 
 interface PricePoint {
   t: number; // epoch ms
@@ -43,36 +46,54 @@ function priceAtOrBefore(points: PricePoint[], targetMs: number): number | null 
   return points[lo].price;
 }
 
-/**
- * Para cada migración de volumen entre goals, mide cuántos ticks se movió el
- * precio en los segundos siguientes — la pregunta central de Eddu: cuánto
- * volumen migrado hace falta para mover el precio, y cuánto lo mueve.
- */
-export function computeMigrationImpacts(
+/** Para un tipo de evento dado, mide cuántos ticks se movió el precio en los
+ * segundos siguientes a cada ocurrencia. Base compartida por el impacto de
+ * migraciones y el de saturaciones — misma pregunta en ambos casos: ¿este
+ * evento anticipa un movimiento real de precio, y de cuánto? */
+function computeImpacts<P>(
   series: SeriesPoint[],
   events: SessionEvent[],
-  tickSize: number
-): MigrationImpact[] {
+  tickSize: number,
+  eventType: SessionEvent["type"]
+): EventImpact<P>[] {
   const points = buildPricePoints(series);
   if (points.length === 0) return [];
 
   const sessionEndMs = points[points.length - 1].t;
 
   return events
-    .filter((e) => e.type === "goal_migration")
+    .filter((e) => e.type === eventType)
     .map((event) => {
       const tMs = new Date(event.ts).getTime();
       const priceAt = priceAtOrBefore(points, tMs);
-      const moves: MigrationMove[] = IMPACT_HORIZONS_SEC.map((horizonSec) => {
+      const moves: EventMove[] = IMPACT_HORIZONS_SEC.map((horizonSec) => {
         const targetMs = tMs + horizonSec * 1000;
         if (priceAt == null || targetMs > sessionEndMs) return { horizonSec, ticks: null };
         const priceLater = priceAtOrBefore(points, targetMs);
         if (priceLater == null) return { horizonSec, ticks: null };
         return { horizonSec, ticks: Number(((priceLater - priceAt) / tickSize).toFixed(1)) };
       });
-      return { event, payload: event.payload as MigrationPayload, priceAt, moves };
+      return { event, payload: event.payload as P, priceAt, moves };
     })
     .sort((a, b) => a.event.ts.localeCompare(b.event.ts));
+}
+
+/**
+ * Para cada migración de volumen entre goals, mide cuántos ticks se movió el
+ * precio en los segundos siguientes — la pregunta central de Eddu: cuánto
+ * volumen migrado hace falta para mover el precio, y cuánto lo mueve.
+ */
+export function computeMigrationImpacts(series: SeriesPoint[], events: SessionEvent[], tickSize: number): MigrationImpact[] {
+  return computeImpacts<MigrationPayload>(series, events, tickSize, "goal_migration");
+}
+
+/**
+ * Para cada señal de reversión del oscilador (satura y vuelve a cruzar),
+ * mide cuánto se movió el precio después — valida si la señal anticipa un
+ * movimiento real y en qué dirección.
+ */
+export function computeSaturationImpacts(series: SeriesPoint[], events: SessionEvent[], tickSize: number): SaturationImpact[] {
+  return computeImpacts<SaturationPayload>(series, events, tickSize, "saturation_signal");
 }
 
 export function formatHorizon(sec: number): string {
