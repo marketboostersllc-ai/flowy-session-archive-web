@@ -19,6 +19,27 @@ async function sb<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// El proyecto de Supabase limita cada respuesta de la Data API a 1000 filas
+// (el "Max Rows" del proyecto), pase lo que pase en `limit=`/`Range` — una
+// sesión completa tiene ~1500-2500 puntos de serie, así que un solo fetch
+// se quedaba cortado a mitad de sesión (~13:50 NY en vez de ~16:00 NY).
+// Se pagina en páginas por debajo del límite hasta que una página vuelve
+// incompleta (fin de los datos).
+const PAGE_SIZE = 500;
+
+async function sbAll<T>(path: string): Promise<T[]> {
+  const sep = path.includes("?") ? "&" : "?";
+  const out: T[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await sb<T[]>(`${path}${sep}offset=${offset}&limit=${PAGE_SIZE}`);
+    out.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return out;
+}
+
 export async function listClosedSessions(): Promise<SessionDay[]> {
   return sb<SessionDay[]>(
     "session_days?select=*&status=eq.closed&order=session_date.desc&limit=90"
@@ -33,13 +54,9 @@ export async function getSessionRow(symbol: string, sessionDate: string): Promis
 }
 
 export async function getSeriesForSession(sessionId: number): Promise<SeriesPoint[]> {
-  return sb<SeriesPoint[]>(
-    `session_series?session_id=eq.${sessionId}&select=ts,price,netgex,z&order=ts.asc&limit=10000`
-  );
+  return sbAll<SeriesPoint>(`session_series?session_id=eq.${sessionId}&select=ts,price,netgex,z&order=ts.asc`);
 }
 
 export async function getEventsForSession(sessionId: number): Promise<SessionEvent[]> {
-  return sb<SessionEvent[]>(
-    `session_events?session_id=eq.${sessionId}&select=id,ts,type,payload&order=ts.asc&limit=2000`
-  );
+  return sbAll<SessionEvent>(`session_events?session_id=eq.${sessionId}&select=id,ts,type,payload&order=ts.asc`);
 }
