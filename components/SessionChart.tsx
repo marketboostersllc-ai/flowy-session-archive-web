@@ -21,6 +21,30 @@ function toTime(iso: string): UTCTimestamp {
   return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp;
 }
 
+// El eje X siempre en hora de Nueva York (la sesión es RTH), sea cual sea
+// la zona horaria del navegador de quien mira la web.
+const nyTickFmt = new Intl.DateTimeFormat("es-ES", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const nyCrosshairFmt = new Intl.DateTimeFormat("es-ES", {
+  timeZone: "America/New_York",
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+function nyTickLabel(time: Time): string {
+  return nyTickFmt.format(new Date((time as number) * 1000));
+}
+function nyCrosshairLabel(time: Time): string {
+  return `${nyCrosshairFmt.format(new Date((time as number) * 1000))} NY`;
+}
+
 type PricePoint = { time: UTCTimestamp; value: number };
 
 function nearestPoint(points: PricePoint[], target: UTCTimestamp): PricePoint | null {
@@ -112,7 +136,13 @@ export default function SessionChart({
         vertLines: { color: "#161a23" },
         horzLines: { color: "#161a23" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#232838" },
+      localization: { timeFormatter: nyCrosshairLabel },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        borderColor: "#232838",
+        tickMarkFormatter: nyTickLabel,
+      },
       rightPriceScale: { borderColor: "#232838" },
       crosshair: {
         mode: 0,
@@ -133,11 +163,11 @@ export default function SessionChart({
       {
         baseValue: { type: "price", price: openPrice },
         topLineColor: "#28f7bf",
-        topFillColor1: "rgba(40, 247, 191, 0.32)",
-        topFillColor2: "rgba(40, 247, 191, 0.02)",
+        topFillColor1: "rgba(40, 247, 191, 0)",
+        topFillColor2: "rgba(40, 247, 191, 0)",
         bottomLineColor: "#fc374a",
-        bottomFillColor1: "rgba(252, 55, 74, 0.02)",
-        bottomFillColor2: "rgba(252, 55, 74, 0.26)",
+        bottomFillColor1: "rgba(252, 55, 74, 0)",
+        bottomFillColor2: "rgba(252, 55, 74, 0)",
         lineWidth: 2,
         priceLineVisible: false,
       },
@@ -171,6 +201,9 @@ export default function SessionChart({
       1
     );
     zSeriesRef.current = zSeries;
+    // Igual que en el indicador de ATAS (Auto invierte NQ y ES): la
+    // saturación se lee abajo, no arriba.
+    zSeries.priceScale().applyOptions({ invertScale: true });
     zSeries.createPriceLine({ price: 2.5, color: "#ffb300aa", lineStyle: 2, title: "+2.5σ", axisLabelVisible: true, lineWidth: 1 });
     zSeries.createPriceLine({ price: -2.5, color: "#ffb300aa", lineStyle: 2, title: "-2.5σ", axisLabelVisible: true, lineWidth: 1 });
 
