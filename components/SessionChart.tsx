@@ -262,6 +262,8 @@ export default function SessionChart({
       2
     );
     netgexSeriesRef.current = netgexSeries;
+    // Igual que el oscilador y que el indicador "Gamma" de ATAS: eje invertido.
+    netgexSeries.priceScale().applyOptions({ invertScale: true });
 
     const panes = chart.panes();
     if (panes[0]) panes[0].setHeight(320);
