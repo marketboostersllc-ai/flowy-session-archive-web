@@ -1,4 +1,5 @@
 import type {
+  GoalSeriesPoint,
   SessionData,
   SessionDay,
   SessionEvent,
@@ -92,12 +93,32 @@ export function mockSessionData(symbol: SessionSymbol, sessionDate: string): Ses
     });
   }
 
+  // Trayectoria de cada goal: unos pocos saltos de strike a lo largo de la
+  // sesión (función escalón, igual que graba el backend real). goalStrikes
+  // se queda con el ÚLTIMO strike de cada goal, para los toques de abajo.
+  const goalSeries: GoalSeriesPoint[] = [];
+  const goalStrikes = new Map<string, number>();
+  for (const k of GOAL_KEYS) {
+    let strike = Math.round((basePrice + (rand() - 0.5) * 200) / (tick * 20)) * tick * 20;
+    goalSeries.push({ ts: openedAt.toISOString(), goal: k, strike, volume: Number((300 + rand() * 2000).toFixed(1)) });
+    const jumps = Math.floor(rand() * 3); // 0-2 saltos extra
+    for (let i = 0; i < jumps; i++) {
+      const t = Math.floor((rand() * 0.8 + 0.1) * totalSeconds);
+      strike += (rand() < 0.5 ? -1 : 1) * tick * 20 * (1 + Math.floor(rand() * 3));
+      goalSeries.push({
+        ts: new Date(openedAt.getTime() + t * 1000).toISOString(),
+        goal: k,
+        strike,
+        volume: Number((300 + rand() * 2000).toFixed(1)),
+      });
+    }
+    goalStrikes.set(k, strike);
+  }
+  goalSeries.sort((a, b) => a.ts.localeCompare(b.ts));
+
   // Eventos: goal touches, saturaciones armado/disparo emparejadas, migraciones.
   const events: SessionEvent[] = [];
   let eventId = 1;
-  const goalStrikes = new Map(
-    GOAL_KEYS.map((k) => [k, Math.round((basePrice + (rand() - 0.5) * 200) / (tick * 20)) * tick * 20])
-  );
 
   const touchCount = 3 + Math.floor(rand() * 4);
   for (let i = 0; i < touchCount; i++) {
@@ -156,5 +177,5 @@ export function mockSessionData(symbol: SessionSymbol, sessionDate: string): Ses
 
   events.sort((a, b) => a.ts.localeCompare(b.ts));
 
-  return { session, series, events, mode: "mock" };
+  return { session, series, events, goalSeries, mode: "mock" };
 }

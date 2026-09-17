@@ -1,4 +1,4 @@
-import type { SessionDay, SessionEvent, SeriesPoint } from "./types";
+import type { GoalSeriesPoint, SessionDay, SessionEvent, SeriesPoint } from "./types";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -59,4 +59,8 @@ export async function getSeriesForSession(sessionId: number): Promise<SeriesPoin
 
 export async function getEventsForSession(sessionId: number): Promise<SessionEvent[]> {
   return sbAll<SessionEvent>(`session_events?session_id=eq.${sessionId}&select=id,ts,type,payload&order=ts.asc`);
+}
+
+export async function getGoalSeriesForSession(sessionId: number): Promise<GoalSeriesPoint[]> {
+  return sbAll<GoalSeriesPoint>(`session_goal_series?session_id=eq.${sessionId}&select=ts,goal,strike,volume&order=ts.asc`);
 }

@@ -27,7 +27,7 @@ export default async function SessionPage({ params }: Props) {
   const data = await getSession(sym as SessionSymbol, date);
   if (!data) notFound();
 
-  const { session, series, events, mode } = data;
+  const { session, series, events, goalSeries, mode } = data;
 
   const touchCount = events.filter((e) => e.type === "goal_touch").length;
   const signalCount = events.filter((e) => e.type === "saturation_signal").length;
@@ -67,7 +67,7 @@ export default async function SessionPage({ params }: Props) {
         </div>
       )}
 
-      <SessionPlayer symbol={session.symbol} series={series} events={events} />
+      <SessionPlayer symbol={session.symbol} series={series} events={events} goalSeries={goalSeries} />
     </main>
   );
 }

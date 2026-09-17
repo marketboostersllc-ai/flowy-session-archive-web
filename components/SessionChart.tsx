@@ -12,9 +12,10 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { SeriesPoint, SessionEvent } from "@/lib/types";
+import type { GoalSeriesPoint, SeriesPoint, SessionEvent } from "@/lib/types";
 import { GOAL_LABELS } from "@/lib/types";
 import { GoalBarsPrimitive, type GoalBarItem } from "@/lib/goalBarsPrimitive";
+import { GoalLinesPrimitive, type GoalLineSegment } from "@/lib/goalLinesPrimitive";
 import type { GoalTouchPayload } from "@/lib/types";
 
 function toTime(iso: string): UTCTimestamp {
@@ -62,6 +63,14 @@ function nearestPoint(points: PricePoint[], target: UTCTimestamp): PricePoint | 
 const GOAL_BAR_COLOR = "#c084fc";
 // Claves crudas de los goals "+" (Vol/OI) — ver GOAL_LABELS en lib/types.ts.
 const POSITIVE_GOAL_KEYS = new Set(["classicMajorPosVol", "goalCall"]);
+// Un color por goal para su trayectoria (línea escalonada) — mismo criterio
+// +/- que las flechas de migración, pero Vol/OI se distinguen entre sí.
+const GOAL_LINE_COLOR: Record<string, string> = {
+  classicMajorPosVol: "#28f7bf",
+  goalCall: "#59aaf8",
+  classicMajorNegVol: "#ffb300",
+  goalPut: "#fc374a",
+};
 
 /** Último precio conocido de un goal (por sus toques) en o antes de `atMs`; si no hay ninguno antes, el primero disponible. */
 function goalPriceAt(touchesByGoal: Map<string, { t: number; price: number }[]>, goal: string, atMs: number): number | null {
@@ -135,14 +144,44 @@ function eventMarker(
   return null;
 }
 
+/** Segmentos de trayectoria de cada goal, revelados hasta `cutoff` (el último
+ * tramo activo se estira hasta el cutoff en vez de quedarse en su propio inicio). */
+function buildGoalSegments(goalSeries: GoalSeriesPoint[], cutoff: UTCTimestamp): GoalLineSegment[] {
+  const byGoal = new Map<string, GoalSeriesPoint[]>();
+  for (const p of goalSeries) {
+    if (toTime(p.ts) > cutoff) continue;
+    const arr = byGoal.get(p.goal);
+    if (arr) arr.push(p);
+    else byGoal.set(p.goal, [p]);
+  }
+  const segments: GoalLineSegment[] = [];
+  for (const [goal, pts] of byGoal) {
+    const sorted = [...pts].sort((a, b) => a.ts.localeCompare(b.ts));
+    for (let i = 0; i < sorted.length; i++) {
+      const fromTime = toTime(sorted[i].ts);
+      const segTo = i + 1 < sorted.length ? toTime(sorted[i + 1].ts) : cutoff;
+      segments.push({
+        fromTime,
+        toTime: segTo,
+        price: sorted[i].strike,
+        color: GOAL_LINE_COLOR[goal] ?? GOAL_BAR_COLOR,
+        label: GOAL_LABELS[goal] ?? goal,
+      });
+    }
+  }
+  return segments;
+}
+
 export default function SessionChart({
   series,
   events,
+  goalSeries,
   playIndex,
   highlightEventId,
 }: {
   series: SeriesPoint[];
   events: SessionEvent[];
+  goalSeries: GoalSeriesPoint[];
   /** Índice (en `series`) hasta el que se revela la sesión. Por defecto, toda. */
   playIndex?: number;
   highlightEventId?: number | null;
@@ -154,6 +193,7 @@ export default function SessionChart({
   const netgexSeriesRef = useRef<ISeriesApi<"Baseline"> | null>(null);
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const goalBarsRef = useRef<GoalBarsPrimitive | null>(null);
+  const goalLinesRef = useRef<GoalLinesPrimitive | null>(null);
   const pricePointsRef = useRef<PricePoint[]>([]);
   const zPointsRef = useRef<PricePoint[]>([]);
   const netgexPointsRef = useRef<PricePoint[]>([]);
@@ -276,6 +316,10 @@ export default function SessionChart({
     priceSeries.attachPrimitive(goalBars);
     goalBarsRef.current = goalBars;
 
+    const goalLines = new GoalLinesPrimitive();
+    priceSeries.attachPrimitive(goalLines);
+    goalLinesRef.current = goalLines;
+
     // El eje de tiempo necesita datos cargados antes de poder fijar un rango
     // visible (si no, lightweight-charts no puede resolver coordenadas y
     // lanza "Value is null"). Se cargan los datos completos aquí una vez;
@@ -295,6 +339,7 @@ export default function SessionChart({
       netgexSeriesRef.current = null;
       markersApiRef.current = null;
       goalBarsRef.current = null;
+      goalLinesRef.current = null;
     };
   }, [series, events]);
 
@@ -306,7 +351,8 @@ export default function SessionChart({
     const netgexSeries = netgexSeriesRef.current;
     const markersApi = markersApiRef.current;
     const goalBars = goalBarsRef.current;
-    if (!chart || !priceSeries || !zSeries || !netgexSeries || !markersApi || !goalBars) return;
+    const goalLines = goalLinesRef.current;
+    if (!chart || !priceSeries || !zSeries || !netgexSeries || !markersApi || !goalBars || !goalLines) return;
 
     const last = series.length - 1;
     const idx = Math.max(0, Math.min(playIndex ?? last, last));
@@ -355,6 +401,8 @@ export default function SessionChart({
       .filter((b): b is GoalBarItem => b !== null);
     goalBars.setItems(barItems);
 
+    goalLines.setSegments(buildGoalSegments(goalSeries, cutoff));
+
     const atRest = idx === last && highlightEventId == null;
     if (atRest) {
       chart.clearCrosshairPosition();
@@ -362,7 +410,7 @@ export default function SessionChart({
       const pt = pricePointsRef.current[idx] ?? nearestPoint(pricePointsRef.current, cutoff);
       if (pt) chart.setCrosshairPosition(pt.value, pt.time, priceSeries);
     }
-  }, [series, events, playIndex, highlightEventId]);
+  }, [series, events, goalSeries, playIndex, highlightEventId]);
 
   return (
     <div className="w-full rounded-2xl border border-border bg-panel/80 p-4 shadow-[0_0_0_1px_rgba(89,170,248,0.05),0_20px_60px_-30px_rgba(89,170,248,0.35)]">
@@ -383,6 +431,13 @@ export default function SessionChart({
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-3 rounded-sm" style={{ background: GOAL_BAR_COLOR }} />
           toques de GOAL (ancho = volumen)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-0 w-3 border-t border-dashed"
+            style={{ borderColor: "#59aaf8" }}
+          />
+          trayectoria de los GOALs
         </span>
       </div>
     </div>

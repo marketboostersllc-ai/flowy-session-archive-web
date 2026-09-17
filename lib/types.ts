@@ -25,6 +25,14 @@ export interface SeriesPoint {
   z: number | null;
 }
 
+/** Un cambio de strike de un GOAL — fila SOLO cuando cambia (función escalón). */
+export interface GoalSeriesPoint {
+  ts: string; // ISO
+  goal: string;
+  strike: number;
+  volume: number | null;
+}
+
 export type EventType =
   | "goal_touch"
   | "saturation_armed"
@@ -62,6 +70,7 @@ export interface SessionData {
   session: SessionDay;
   series: SeriesPoint[];
   events: SessionEvent[];
+  goalSeries: GoalSeriesPoint[];
   mode: "live" | "mock";
 }
 

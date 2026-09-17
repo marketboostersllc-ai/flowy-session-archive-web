@@ -1,6 +1,7 @@
 import { mockSessionData, mockSessionList } from "./mock";
 import {
   getEventsForSession,
+  getGoalSeriesForSession,
   getSeriesForSession,
   getSessionRow,
   listClosedSessions,
@@ -32,10 +33,11 @@ export async function getSession(
   const row = await getSessionRow(symbol, sessionDate).catch(() => null);
   if (!row) return null;
 
-  const [series, events] = await Promise.all([
+  const [series, events, goalSeries] = await Promise.all([
     getSeriesForSession(row.id),
     getEventsForSession(row.id),
+    getGoalSeriesForSession(row.id),
   ]);
 
-  return { session: row, series, events, mode: "live" };
+  return { session: row, series, events, goalSeries, mode: "live" };
 }

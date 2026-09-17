@@ -6,7 +6,7 @@ import EventTimeline from "./EventTimeline";
 import MigrationImpactPanel from "./MigrationImpactPanel";
 import SaturationImpactPanel from "./SaturationImpactPanel";
 import ExcursionPanel from "./ExcursionPanel";
-import type { SeriesPoint, SessionEvent, SessionSymbol } from "@/lib/types";
+import type { GoalSeriesPoint, SeriesPoint, SessionEvent, SessionSymbol } from "@/lib/types";
 import { formatEtTime } from "@/lib/format";
 
 const SPEEDS = [1, 2, 5, 10, 20] as const;
@@ -53,10 +53,12 @@ export default function SessionPlayer({
   symbol,
   series,
   events,
+  goalSeries,
 }: {
   symbol: SessionSymbol;
   series: SeriesPoint[];
   events: SessionEvent[];
+  goalSeries: GoalSeriesPoint[];
 }) {
   const last = Math.max(0, series.length - 1);
   const [playIndex, setPlayIndex] = useState(last);
@@ -129,7 +131,7 @@ export default function SessionPlayer({
 
       <div className={showEvents ? "grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]" : "grid grid-cols-1 gap-4"}>
         <div className="space-y-3">
-        <SessionChart series={series} events={events} playIndex={playIndex} highlightEventId={selectedEventId} />
+        <SessionChart series={series} events={events} goalSeries={goalSeries} playIndex={playIndex} highlightEventId={selectedEventId} />
 
         <div className="rounded-2xl border border-border bg-panel/80 px-5 py-4">
           <div className="flex items-center gap-4">
