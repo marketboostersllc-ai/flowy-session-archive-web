@@ -4,6 +4,7 @@ import {
   DEFAULT_PARAMS,
   ENTRY_LABELS,
   runBacktest,
+  signalGapStats,
   type EntryKind,
   type KindResult,
 } from "@/lib/backtest";
@@ -89,16 +90,46 @@ function ExpGrid({ res, dpt }: { res: KindResult; dpt: number }) {
   );
 }
 
-function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: SessionData[] }) {
+function SymbolSection({
+  symbol,
+  sessions,
+  cooldownSec,
+}: {
+  symbol: SessionSymbol;
+  sessions: SessionData[];
+  cooldownSec: number;
+}) {
   const tickSize = TICK_SIZE[symbol];
   const dpt = DOLLAR_PER_TICK[symbol];
-  const results = KINDS.map((k) => runBacktest(k, sessions, DEFAULT_PARAMS, tickSize));
+  const params = { ...DEFAULT_PARAMS, signalCooldownSec: cooldownSec };
+  const results = KINDS.map((k) => runBacktest(k, sessions, params, tickSize));
+  const gaps = signalGapStats(sessions);
 
   return (
     <section className="mb-14">
       <h2 className="mb-4 font-[family-name:var(--font-heading)] text-2xl font-semibold text-text">
         {symbol} <span className="text-sm font-normal text-text-dim">· ${dpt}/tick</span>
       </h2>
+
+      {/* Distribución de huecos entre señales de la misma dirección */}
+      {gaps.total > 0 && (
+        <div className="mb-6 rounded-2xl border border-border bg-panel/80 p-4">
+          <p className="mb-2 text-sm font-semibold text-text">
+            Repetición de señales de Flowy <span className="font-normal text-text-dim">· {gaps.total} huecos consecutivos (misma dirección)</span>
+          </p>
+          <div className="flex flex-wrap gap-2 font-[family-name:var(--font-mono)] text-xs">
+            {gaps.buckets.map((b) => (
+              <span key={b.label} className="rounded-md border border-border bg-panel-2 px-2.5 py-1 text-text-dim">
+                {b.label}: <span className="text-text">{b.n}</span>
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-text-dim">
+            Los huecos cortos (&lt;1-2 min) son repeticiones de la misma señal. El cooldown actual ({cooldownSec / 60} min)
+            las fusiona; ajústalo arriba y compara.
+          </p>
+        </div>
+      )}
 
       {/* Resumen: mejor stop/target por tipo */}
       <div className="mb-6 overflow-x-auto rounded-2xl border border-border bg-panel/80">
@@ -177,7 +208,24 @@ function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: 
   );
 }
 
-export default async function BacktestPage() {
+const COOLDOWN_OPTIONS = [
+  { label: "Sin", sec: 0 },
+  { label: "1 min", sec: 60 },
+  { label: "2 min", sec: 120 },
+  { label: "5 min", sec: 300 },
+  { label: "10 min", sec: 600 },
+  { label: "15 min", sec: 900 },
+];
+
+export default async function BacktestPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cd?: string }>;
+}) {
+  const sp = await searchParams;
+  const cdRaw = Number(sp.cd);
+  const cooldownSec = COOLDOWN_OPTIONS.some((o) => o.sec === cdRaw) ? cdRaw : DEFAULT_PARAMS.signalCooldownSec;
+
   const list = await getAvailableSessions();
   const bySymbol = new Map<SessionSymbol, SessionData[]>();
 
@@ -205,9 +253,27 @@ export default async function BacktestPage() {
           su stop o su target (y al cierre de sesión si no toca ninguno). Migración = dirección &quot;imán&quot;
           (hacia el goal que gana volumen). Doble confirmación =
           señal Flowy + migración en la misma dirección dentro de {DEFAULT_PARAMS.doubleWindowSec}s. Señales de
-          Flowy de-duplicadas: una repetición de la misma dirección dentro de{" "}
-          {DEFAULT_PARAMS.signalCooldownSec / 60} min no cuenta como nuevo trade.
+          Flowy de-duplicadas: una repetición de la misma dirección dentro del enfriamiento no cuenta como nuevo
+          trade. Stops acotados a ≤300 ticks (tolerancia); targets hasta 1500.
         </p>
+
+        {/* Control de enfriamiento (cooldown) de señales */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="font-[family-name:var(--font-mono)] text-xs text-text-dim">Enfriamiento señal:</span>
+          {COOLDOWN_OPTIONS.map((o) => (
+            <Link
+              key={o.sec}
+              href={o.sec === DEFAULT_PARAMS.signalCooldownSec ? "/backtest" : `/backtest?cd=${o.sec}`}
+              className={`rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-xs transition ${
+                o.sec === cooldownSec
+                  ? "border-gamma bg-gamma/15 text-gamma"
+                  : "border-border bg-panel-2 text-text-dim hover:border-gamma/40 hover:text-text"
+              }`}
+            >
+              {o.label}
+            </Link>
+          ))}
+        </div>
       </header>
 
       {dataMode === "mock" && (
@@ -221,7 +287,9 @@ export default async function BacktestPage() {
           Todavía no hay sesiones grabadas para simular.
         </div>
       ) : (
-        symbols.map((sym) => <SymbolSection key={sym} symbol={sym} sessions={bySymbol.get(sym)!} />)
+        symbols.map((sym) => (
+          <SymbolSection key={sym} symbol={sym} sessions={bySymbol.get(sym)!} cooldownSec={cooldownSec} />
+        ))
       )}
     </main>
   );

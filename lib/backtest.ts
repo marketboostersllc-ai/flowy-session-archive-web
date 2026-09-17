@@ -40,15 +40,58 @@ export interface BacktestParams {
   signalCooldownSec: number;
 }
 
-// Rejilla en TICKS (NQ/ES: 1 punto = 4 ticks, tick = 0.25). Rango amplio:
-// trades de recorrido grande (hasta ~1500 ticks), no scalps de 40-80 ticks.
+// Rejilla en TICKS (NQ/ES: 1 punto = 4 ticks, tick = 0.25).
+// Stops ACOTADOS a ≤300 ticks (tolerancia de Eddu: un stop de +300 ticks no
+// es operable en su estilo). Targets amplios (hasta 1500) porque un profit
+// puede llegar a 600/800/1500 ticks.
 export const DEFAULT_PARAMS: BacktestParams = {
-  stops: [80, 160, 240, 400, 600, 800],
+  stops: [40, 80, 120, 160, 200, 240, 300],
   targets: [160, 320, 480, 640, 800, 1000, 1200, 1500],
   maxHoldSec: 21600, // 6 h — efectivamente hasta el cierre de la sesión RTH
   doubleWindowSec: 120,
-  signalCooldownSec: 300, // 5 min: repeticiones de la misma señal no cuentan
+  signalCooldownSec: 300, // 5 min (ajustable): repeticiones de la misma señal no cuentan
 };
+
+// Huecos (segundos) entre señales de Flowy CONSECUTIVAS de la misma dirección,
+// sobre todas las sesiones — para elegir el cooldown con criterio (los clusters
+// de repeticiones aparecen como huecos muy cortos).
+export function computeSignalGaps(sessions: SessionData[]): number[] {
+  const gaps: number[] = [];
+  for (const s of sessions) {
+    const sigs = s.events
+      .filter((e) => e.type === "saturation_signal")
+      .map((e) => ({ t: new Date(e.ts).getTime(), dir: (e.payload as SaturationPayload).direction }))
+      .sort((a, b) => a.t - b.t);
+    const lastByDir: Record<string, number> = {};
+    for (const sg of sigs) {
+      const prev = lastByDir[sg.dir];
+      if (prev != null) gaps.push((sg.t - prev) / 1000);
+      lastByDir[sg.dir] = sg.t;
+    }
+  }
+  return gaps.sort((a, b) => a - b);
+}
+
+export interface GapStats {
+  total: number;
+  buckets: { label: string; n: number }[];
+}
+
+export function signalGapStats(sessions: SessionData[]): GapStats {
+  const gaps = computeSignalGaps(sessions);
+  const edges = [30, 60, 120, 300, 600, Infinity];
+  const labels = ["<30s", "30-60s", "1-2 min", "2-5 min", "5-10 min", ">10 min"];
+  const n = edges.map(() => 0);
+  for (const g of gaps) {
+    for (let i = 0; i < edges.length; i++) {
+      if (g < edges[i]) {
+        n[i]++;
+        break;
+      }
+    }
+  }
+  return { total: gaps.length, buckets: labels.map((label, i) => ({ label, n: n[i] })) };
+}
 
 export type EntryKind = "flowy" | "mig_fast" | "mig_slow" | "mig_all" | "double";
 
