@@ -35,11 +35,12 @@ export interface BacktestParams {
   doubleWindowSec: number; // ventana señal→migración para doble confirmación
 }
 
-// Rejilla en TICKS (NQ/ES: 1 punto = 4 ticks, tick = 0.25).
+// Rejilla en TICKS (NQ/ES: 1 punto = 4 ticks, tick = 0.25). Rango amplio:
+// trades de recorrido grande (hasta ~1500 ticks), no scalps de 40-80 ticks.
 export const DEFAULT_PARAMS: BacktestParams = {
-  stops: [40, 60, 80, 100, 120, 160],
-  targets: [40, 60, 80, 100, 120, 160, 200, 240, 300, 400],
-  maxHoldSec: 1200, // 20 min
+  stops: [80, 160, 240, 400, 600, 800],
+  targets: [160, 320, 480, 640, 800, 1000, 1200, 1500],
+  maxHoldSec: 21600, // 6 h — efectivamente hasta el cierre de la sesión RTH
   doubleWindowSec: 120,
 };
 
