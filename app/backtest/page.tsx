@@ -57,6 +57,11 @@ function pts(x: number): string {
 function usd(x: number): string {
   return `${x >= 0 ? "+" : "-"}$${Math.abs(x).toFixed(0)}`;
 }
+// Win rate de break-even que impone el R:R (stop/(stop+target)) y la ventaja
+// real = win% conseguido − break-even, en puntos porcentuales.
+function beRate(stop: number, target: number): number {
+  return stop + target > 0 ? stop / (stop + target) : 0;
+}
 function pf(x: number): string {
   return x === Infinity ? "∞" : x.toFixed(2);
 }
@@ -176,6 +181,7 @@ function SymbolSection({
               <th className="p-3 text-right font-normal">Stop (ticks)</th>
               <th className="p-3 text-right font-normal">Target (ticks)</th>
               <th className="p-3 text-right font-normal">Win%</th>
+              <th className="p-3 text-right font-normal">Win% vs BE</th>
               <th className="p-3 text-right font-normal">Exp. (ticks)</th>
               <th className="p-3 text-right font-normal">Exp. ($)</th>
               <th className="p-3 text-right font-normal">PF</th>
@@ -195,6 +201,19 @@ function SymbolSection({
                 <td className="p-3 text-right tabular-nums text-text">{r.best ? r.best.stop : "—"}</td>
                 <td className="p-3 text-right tabular-nums text-text">{r.best ? r.best.target : "—"}</td>
                 <td className="p-3 text-right tabular-nums text-text">{r.best ? pct(r.best.winRate) : "—"}</td>
+                {(() => {
+                  if (!r.best) return <td className="p-3 text-right tabular-nums text-text-dim">—</td>;
+                  const be = beRate(r.best.stop, r.best.target);
+                  const edge = (r.best.winRate - be) * 100;
+                  return (
+                    <td
+                      className={`p-3 text-right tabular-nums font-semibold ${edge >= 0 ? "text-gamma" : "text-red-400"}`}
+                      title={`break-even ${(be * 100).toFixed(0)}% · conseguido ${(r.best.winRate * 100).toFixed(0)}%`}
+                    >
+                      {`${edge >= 0 ? "+" : ""}${edge.toFixed(0)} pp`}
+                    </td>
+                  );
+                })()}
                 <td
                   className={`p-3 text-right tabular-nums font-semibold ${r.best && r.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
                 >
