@@ -17,6 +17,37 @@ const KINDS: EntryKind[] = ["flowy", "mig_all", "mig_fast", "mig_slow", "double"
 // $ por tick del E-mini: NQ = $5, ES = $12,50.
 const DOLLAR_PER_TICK: Record<SessionSymbol, number> = { NQ: 5, ES: 12.5 };
 
+const COOLDOWN_OPTIONS = [
+  { label: "Sin", sec: 0 },
+  { label: "1 min", sec: 60 },
+  { label: "2 min", sec: 120 },
+  { label: "5 min", sec: 300 },
+  { label: "10 min", sec: 600 },
+  { label: "15 min", sec: 900 },
+];
+
+function CooldownSelector({ current }: { current: number }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <span className="font-[family-name:var(--font-mono)] text-xs text-text-dim">Enfriamiento señal:</span>
+      {COOLDOWN_OPTIONS.map((o) => (
+        <Link
+          key={o.sec}
+          href={o.sec === DEFAULT_PARAMS.signalCooldownSec ? "/backtest" : `/backtest?cd=${o.sec}`}
+          scroll={false}
+          className={`rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-xs transition ${
+            o.sec === current
+              ? "border-gamma bg-gamma/15 text-gamma"
+              : "border-border bg-panel-2 text-text-dim hover:border-gamma/40 hover:text-text"
+          }`}
+        >
+          {o.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function pct(x: number): string {
   return `${(x * 100).toFixed(0)}%`;
 }
@@ -110,6 +141,8 @@ function SymbolSection({
       <h2 className="mb-4 font-[family-name:var(--font-heading)] text-2xl font-semibold text-text">
         {symbol} <span className="text-sm font-normal text-text-dim">· ${dpt}/tick</span>
       </h2>
+
+      <CooldownSelector current={cooldownSec} />
 
       {/* Distribución de huecos entre señales de la misma dirección */}
       {gaps.total > 0 && (
@@ -208,15 +241,6 @@ function SymbolSection({
   );
 }
 
-const COOLDOWN_OPTIONS = [
-  { label: "Sin", sec: 0 },
-  { label: "1 min", sec: 60 },
-  { label: "2 min", sec: 120 },
-  { label: "5 min", sec: 300 },
-  { label: "10 min", sec: 600 },
-  { label: "15 min", sec: 900 },
-];
-
 export default async function BacktestPage({
   searchParams,
 }: {
@@ -254,26 +278,9 @@ export default async function BacktestPage({
           (hacia el goal que gana volumen). Doble confirmación =
           señal Flowy + migración en la misma dirección dentro de {DEFAULT_PARAMS.doubleWindowSec}s. Señales de
           Flowy de-duplicadas: una repetición de la misma dirección dentro del enfriamiento no cuenta como nuevo
-          trade. Stops acotados a ≤300 ticks (tolerancia); targets hasta 1500.
+          trade. Stops acotados a ≤300 ticks (tolerancia); targets hasta 1500. El enfriamiento de señal se elige
+          en el encabezado de cada tabla.
         </p>
-
-        {/* Control de enfriamiento (cooldown) de señales */}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="font-[family-name:var(--font-mono)] text-xs text-text-dim">Enfriamiento señal:</span>
-          {COOLDOWN_OPTIONS.map((o) => (
-            <Link
-              key={o.sec}
-              href={o.sec === DEFAULT_PARAMS.signalCooldownSec ? "/backtest" : `/backtest?cd=${o.sec}`}
-              className={`rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-xs transition ${
-                o.sec === cooldownSec
-                  ? "border-gamma bg-gamma/15 text-gamma"
-                  : "border-border bg-panel-2 text-text-dim hover:border-gamma/40 hover:text-text"
-              }`}
-            >
-              {o.label}
-            </Link>
-          ))}
-        </div>
       </header>
 
       {dataMode === "mock" && (
