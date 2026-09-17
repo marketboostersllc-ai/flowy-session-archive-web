@@ -33,6 +33,11 @@ export interface BacktestParams {
   targets: number[]; // TICKS
   maxHoldSec: number; // salida por tiempo si no toca stop/target
   doubleWindowSec: number; // ventana señal→migración para doble confirmación
+  // Enfriamiento anti-repetición: una señal de Flowy puede dispararse varias
+  // veces seguidas (la MISMA señal); no metemos un trade por cada una. Se
+  // ignora una señal de la MISMA dirección dentro de esta ventana desde la
+  // última aceptada (una reversión al lado contrario sí se acepta).
+  signalCooldownSec: number;
 }
 
 // Rejilla en TICKS (NQ/ES: 1 punto = 4 ticks, tick = 0.25). Rango amplio:
@@ -42,6 +47,7 @@ export const DEFAULT_PARAMS: BacktestParams = {
   targets: [160, 320, 480, 640, 800, 1000, 1200, 1500],
   maxHoldSec: 21600, // 6 h — efectivamente hasta el cierre de la sesión RTH
   doubleWindowSec: 120,
+  signalCooldownSec: 300, // 5 min: repeticiones de la misma señal no cuentan
 };
 
 export type EntryKind = "flowy" | "mig_fast" | "mig_slow" | "mig_all" | "double";
@@ -175,14 +181,21 @@ function collectEntries(kind: EntryKind, data: SessionData, params: BacktestPara
     return goalTypeDir(pl.to); // fallback por tipo de goal
   };
 
+  const cooldownMs = params.signalCooldownSec * 1000;
+
   if (kind === "flowy") {
+    let lastTs = -Infinity;
+    let lastDir: Dir | null = null;
     for (const ev of data.events) {
       if (ev.type !== "saturation_signal") continue;
       const tMs = new Date(ev.ts).getTime();
+      const dir: Dir = (ev.payload as SaturationPayload).direction === "buy" ? 1 : -1;
+      if (dir === lastDir && tMs - lastTs < cooldownMs) continue; // misma señal repetida → se ignora
       const entry = priceAtOrBefore(points, tMs);
       if (entry == null) continue;
-      const dir: Dir = (ev.payload as SaturationPayload).direction === "buy" ? 1 : -1;
       entries.push({ tMs, dir, entry });
+      lastTs = tMs;
+      lastDir = dir;
     }
     return entries;
   }
@@ -205,10 +218,15 @@ function collectEntries(kind: EntryKind, data: SessionData, params: BacktestPara
   // double: señal Flowy y, dentro de la ventana, una migración en la misma dir.
   if (kind === "double") {
     const migs = data.events.filter((e) => e.type === "goal_migration");
+    let lastTs = -Infinity;
+    let lastDir: Dir | null = null;
     for (const ev of data.events) {
       if (ev.type !== "saturation_signal") continue;
       const sigMs = new Date(ev.ts).getTime();
       const dir: Dir = (ev.payload as SaturationPayload).direction === "buy" ? 1 : -1;
+      if (dir === lastDir && sigMs - lastTs < cooldownMs) continue; // misma señal repetida → se ignora
+      lastTs = sigMs;
+      lastDir = dir;
       const winEnd = sigMs + params.doubleWindowSec * 1000;
       for (const m of migs) {
         const mMs = new Date(m.ts).getTime();

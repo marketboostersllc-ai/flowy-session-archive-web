@@ -204,7 +204,9 @@ export default async function BacktestPage() {
           profit de la estrategia. Stop/target en ticks (rango amplio, hasta 1500). Cada operación se cierra en
           su stop o su target (y al cierre de sesión si no toca ninguno). Migración = dirección &quot;imán&quot;
           (hacia el goal que gana volumen). Doble confirmación =
-          señal Flowy + migración en la misma dirección dentro de {DEFAULT_PARAMS.doubleWindowSec}s.
+          señal Flowy + migración en la misma dirección dentro de {DEFAULT_PARAMS.doubleWindowSec}s. Señales de
+          Flowy de-duplicadas: una repetición de la misma dirección dentro de{" "}
+          {DEFAULT_PARAMS.signalCooldownSec / 60} min no cuenta como nuevo trade.
         </p>
       </header>
 
