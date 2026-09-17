@@ -24,6 +24,7 @@ const COOLDOWN_OPTIONS = [
   { label: "5 min", sec: 300 },
   { label: "10 min", sec: 600 },
   { label: "15 min", sec: 900 },
+  { label: "20 min", sec: 1200 },
 ];
 
 interface ViewState {
