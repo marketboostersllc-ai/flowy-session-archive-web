@@ -92,18 +92,7 @@ function ExpGrid({ res, dpt }: { res: KindResult; dpt: number }) {
 function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: SessionData[] }) {
   const tickSize = TICK_SIZE[symbol];
   const dpt = DOLLAR_PER_TICK[symbol];
-  const horizons = [
-    { label: "1 h", sec: 3600 },
-    { label: "2 h", sec: 7200 },
-    { label: "Cierre", sec: 21600 },
-  ];
-  const byKind = KINDS.map((k) => ({
-    kind: k,
-    rows: horizons.map((h) => ({
-      h,
-      res: runBacktest(k, sessions, { ...DEFAULT_PARAMS, maxHoldSec: h.sec }, tickSize),
-    })),
-  }));
+  const results = KINDS.map((k) => runBacktest(k, sessions, DEFAULT_PARAMS, tickSize));
 
   return (
     <section className="mb-14">
@@ -117,7 +106,6 @@ function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: 
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
               <th className="p-3 font-normal">Tipo de entrada</th>
-              <th className="p-3 font-normal">Salida</th>
               <th className="p-3 text-right font-normal">Entradas</th>
               <th className="p-3 text-right font-normal">MAE p50/p80 (ticks)</th>
               <th className="p-3 text-right font-normal">MFE p50/p80 (ticks)</th>
@@ -130,74 +118,57 @@ function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: 
             </tr>
           </thead>
           <tbody className="font-[family-name:var(--font-mono)]">
-            {byKind.map(({ kind, rows }) =>
-              rows.map(({ h, res }, i) => (
-                <tr
-                  key={`${kind}-${h.label}`}
-                  className={i === rows.length - 1 ? "border-b border-border" : "border-b border-border/20"}
+            {results.map((r) => (
+              <tr key={r.kind} className="border-b border-border/50 last:border-0">
+                <td className="p-3 font-[family-name:var(--font-sans)] text-text">{ENTRY_LABELS[r.kind]}</td>
+                <td className="p-3 text-right tabular-nums text-text">{r.entries}</td>
+                <td className="p-3 text-right tabular-nums text-text-dim">
+                  {r.maeP50.toFixed(0)}/{r.maeP80.toFixed(0)}
+                </td>
+                <td className="p-3 text-right tabular-nums text-text-dim">
+                  {r.mfeP50.toFixed(0)}/{r.mfeP80.toFixed(0)}
+                </td>
+                <td className="p-3 text-right tabular-nums text-text">{r.best ? r.best.stop : "—"}</td>
+                <td className="p-3 text-right tabular-nums text-text">{r.best ? r.best.target : "—"}</td>
+                <td className="p-3 text-right tabular-nums text-text">{r.best ? pct(r.best.winRate) : "—"}</td>
+                <td
+                  className={`p-3 text-right tabular-nums font-semibold ${r.best && r.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
                 >
-                  <td className="p-3 font-[family-name:var(--font-sans)] text-text">
-                    {i === 0 ? ENTRY_LABELS[kind] : ""}
-                  </td>
-                  <td className="p-3 text-text-dim">{h.label}</td>
-                  <td className="p-3 text-right tabular-nums text-text">{res.entries}</td>
-                  <td className="p-3 text-right tabular-nums text-text-dim">
-                    {res.maeP50.toFixed(0)}/{res.maeP80.toFixed(0)}
-                  </td>
-                  <td className="p-3 text-right tabular-nums text-text-dim">
-                    {res.mfeP50.toFixed(0)}/{res.mfeP80.toFixed(0)}
-                  </td>
-                  <td className="p-3 text-right tabular-nums text-text">{res.best ? res.best.stop : "—"}</td>
-                  <td className="p-3 text-right tabular-nums text-text">{res.best ? res.best.target : "—"}</td>
-                  <td className="p-3 text-right tabular-nums text-text">{res.best ? pct(res.best.winRate) : "—"}</td>
-                  <td
-                    className={`p-3 text-right tabular-nums font-semibold ${res.best && res.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
-                  >
-                    {res.best ? pts(res.best.expectancy) : "—"}
-                  </td>
-                  <td
-                    className={`p-3 text-right tabular-nums font-semibold ${res.best && res.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
-                  >
-                    {res.best ? usd(res.best.expectancy * dpt) : "—"}
-                  </td>
-                  <td className="p-3 text-right tabular-nums text-text">{res.best ? pf(res.best.profitFactor) : "—"}</td>
-                </tr>
-              ))
-            )}
+                  {r.best ? pts(r.best.expectancy) : "—"}
+                </td>
+                <td
+                  className={`p-3 text-right tabular-nums font-semibold ${r.best && r.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
+                >
+                  {r.best ? usd(r.best.expectancy * dpt) : "—"}
+                </td>
+                <td className="p-3 text-right tabular-nums text-text">{r.best ? pf(r.best.profitFactor) : "—"}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
       {/* Rejilla por tipo */}
       <div className="grid gap-6">
-        {byKind.map(({ kind, rows }) => (
-          <div key={kind} className="rounded-2xl border border-border bg-panel/80 p-4">
+        {results.map((r) => (
+          <div key={r.kind} className="rounded-2xl border border-border bg-panel/80 p-4">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <h3 className="font-[family-name:var(--font-sans)] text-sm font-semibold text-text">
-                {ENTRY_LABELS[kind]}
+                {ENTRY_LABELS[r.kind]}
               </h3>
               <span className="font-[family-name:var(--font-mono)] text-xs text-text-dim">
-                {rows[0].res.entries} entradas
+                {r.entries} entradas
               </span>
             </div>
-            {rows[0].res.entries === 0 ? (
+            {r.entries === 0 ? (
               <p className="text-sm text-text-dim">
                 Sin entradas de este tipo en los datos disponibles
-                {kind === "mig_fast" || kind === "mig_slow"
+                {r.kind === "mig_fast" || r.kind === "mig_slow"
                   ? " (la etiqueta rápida/lenta solo existe en sesiones grabadas desde el 17-sep-2026)."
                   : "."}
               </p>
             ) : (
-              <div className="grid gap-5">
-                {rows.map(({ h, res }) => (
-                  <div key={h.label}>
-                    <p className="mb-1.5 font-[family-name:var(--font-mono)] text-xs font-semibold text-gamma">
-                      Salida {h.label}
-                    </p>
-                    <ExpGrid res={res} dpt={dpt} />
-                  </div>
-                ))}
-              </div>
+              <ExpGrid res={r} dpt={dpt} />
             )}
           </div>
         ))}
@@ -230,9 +201,9 @@ export default async function BacktestPage() {
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-text-dim">
           Simula stop/target sobre el precio real grabado, por tipo de entrada, para decidir el stop y el
-          profit de la estrategia. Stop/target en ticks (rango amplio, hasta 1500). Salida por tiempo a las{" "}
-          {DEFAULT_PARAMS.maxHoldSec / 3600} h (≈ cierre de sesión) si no toca ninguno. Migración = dirección
-          &quot;imán&quot; (hacia el goal que gana volumen). Doble confirmación =
+          profit de la estrategia. Stop/target en ticks (rango amplio, hasta 1500). Cada operación se cierra en
+          su stop o su target (y al cierre de sesión si no toca ninguno). Migración = dirección &quot;imán&quot;
+          (hacia el goal que gana volumen). Doble confirmación =
           señal Flowy + migración en la misma dirección dentro de {DEFAULT_PARAMS.doubleWindowSec}s.
         </p>
       </header>
