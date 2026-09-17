@@ -57,6 +57,9 @@ export interface MigrationPayload {
   to: string;
   dropAbs: number;
   riseAbs: number;
+  /** true = trasvase rápido, false = lento. Ausente en sesiones grabadas antes
+   * de añadir la etiqueta (17-sep-2026). */
+  fast?: boolean;
 }
 
 export interface SessionEvent {

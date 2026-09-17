@@ -32,6 +32,12 @@ export default async function HomePage() {
           Qué pasó cada día en SP y NQ: precio, GOALs, saturaciones del oscilador y
           migraciones de volumen, sesión a sesión. Reproducible a distintas velocidades.
         </p>
+        <Link
+          href="/backtest"
+          className="mt-4 inline-flex items-center gap-2 rounded-full border border-gamma/40 bg-gamma/10 px-4 py-2 text-sm font-semibold text-gamma transition hover:bg-gamma/20"
+        >
+          Backtest de entradas (stop / profit) →
+        </Link>
       </header>
 
       {dataMode === "mock" && (
