@@ -152,14 +152,24 @@ function collectEntries(kind: EntryKind, data: SessionData, params: BacktestPara
   if (points.length === 0) return [];
   const entries: Entry[] = [];
 
+  // Dirección "imán": hacia el goal que gana volumen. Si hay trayectoria de
+  // strikes (session_goal_series), se usa el strike real vs el precio; si no
+  // (sesiones grabadas antes del 17-sep, sin trayectoria), se cae al TIPO de
+  // goal: call/positivo → arriba (+1), put/negativo → abajo (-1).
+  const goalTypeDir = (goal: string): Dir | null =>
+    goal === "classicMajorPosVol" || goal === "goalCall"
+      ? 1
+      : goal === "classicMajorNegVol" || goal === "goalPut"
+        ? -1
+        : null;
   const migDir = (ev: SessionEvent): Dir | null => {
     const pl = ev.payload as MigrationPayload;
     const tMs = new Date(ev.ts).getTime();
     const entry = priceAtOrBefore(points, tMs);
     if (entry == null) return null;
     const toStrike = goalStrikeAt(data.goalSeries, pl.to, tMs);
-    if (toStrike == null || toStrike === entry) return null;
-    return toStrike > entry ? 1 : -1; // imán: hacia el goal que gana volumen
+    if (toStrike != null && toStrike !== entry) return toStrike > entry ? 1 : -1;
+    return goalTypeDir(pl.to); // fallback por tipo de goal
   };
 
   if (kind === "flowy") {
