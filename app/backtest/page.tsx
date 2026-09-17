@@ -26,24 +26,61 @@ const COOLDOWN_OPTIONS = [
   { label: "15 min", sec: 900 },
 ];
 
-function CooldownSelector({ current }: { current: number }) {
+interface ViewState {
+  sym: SessionSymbol;
+  day: string; // "total" o YYYY-MM-DD
+  cd: number;
+}
+
+function buildHref(cur: ViewState, ov: Partial<ViewState>): string {
+  const p = { ...cur, ...ov };
+  const q = new URLSearchParams();
+  q.set("sym", p.sym);
+  if (p.day && p.day !== "total") q.set("day", p.day);
+  if (p.cd !== DEFAULT_PARAMS.signalCooldownSec) q.set("cd", String(p.cd));
+  return `/backtest?${q.toString()}`;
+}
+
+function PillNav({
+  label,
+  items,
+}: {
+  label: string;
+  items: { key: string; label: string; href: string; active: boolean }[];
+}) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
-      <span className="font-[family-name:var(--font-mono)] text-xs text-text-dim">Enfriamiento señal:</span>
-      {COOLDOWN_OPTIONS.map((o) => (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="min-w-[7.5rem] font-[family-name:var(--font-mono)] text-xs text-text-dim">{label}</span>
+      {items.map((it) => (
         <Link
-          key={o.sec}
-          href={o.sec === DEFAULT_PARAMS.signalCooldownSec ? "/backtest" : `/backtest?cd=${o.sec}`}
+          key={it.key}
+          href={it.href}
           scroll={false}
           className={`rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-xs transition ${
-            o.sec === current
+            it.active
               ? "border-gamma bg-gamma/15 text-gamma"
               : "border-border bg-panel-2 text-text-dim hover:border-gamma/40 hover:text-text"
           }`}
         >
-          {o.label}
+          {it.label}
         </Link>
       ))}
+    </div>
+  );
+}
+
+function CooldownSelector({ cur }: { cur: ViewState }) {
+  return (
+    <div className="mb-4">
+      <PillNav
+        label="Enfriamiento señal:"
+        items={COOLDOWN_OPTIONS.map((o) => ({
+          key: String(o.sec),
+          label: o.label,
+          href: buildHref(cur, { cd: o.sec }),
+          active: o.sec === cur.cd,
+        }))}
+      />
     </div>
   );
 }
@@ -129,25 +166,27 @@ function ExpGrid({ res, dpt }: { res: KindResult; dpt: number }) {
 function SymbolSection({
   symbol,
   sessions,
-  cooldownSec,
+  cur,
+  scopeLabel,
 }: {
   symbol: SessionSymbol;
   sessions: SessionData[];
-  cooldownSec: number;
+  cur: ViewState;
+  scopeLabel: string;
 }) {
   const tickSize = TICK_SIZE[symbol];
   const dpt = DOLLAR_PER_TICK[symbol];
-  const params = { ...DEFAULT_PARAMS, signalCooldownSec: cooldownSec };
+  const params = { ...DEFAULT_PARAMS, signalCooldownSec: cur.cd };
   const results = KINDS.map((k) => runBacktest(k, sessions, params, tickSize));
   const gaps = signalGapStats(sessions);
 
   return (
     <section className="mb-14">
       <h2 className="mb-4 font-[family-name:var(--font-heading)] text-2xl font-semibold text-text">
-        {symbol} <span className="text-sm font-normal text-text-dim">· ${dpt}/tick</span>
+        {symbol} <span className="text-sm font-normal text-text-dim">· ${dpt}/tick · {scopeLabel}</span>
       </h2>
 
-      <CooldownSelector current={cooldownSec} />
+      <CooldownSelector cur={cur} />
 
       {/* Distribución de huecos entre señales de la misma dirección */}
       {gaps.total > 0 && (
@@ -163,7 +202,7 @@ function SymbolSection({
             ))}
           </div>
           <p className="mt-2 text-[11px] text-text-dim">
-            Los huecos cortos (&lt;1-2 min) son repeticiones de la misma señal. El cooldown actual ({cooldownSec / 60} min)
+            Los huecos cortos (&lt;1-2 min) son repeticiones de la misma señal. El cooldown actual ({cur.cd / 60} min)
             las fusiona; ajústalo arriba y compara.
           </p>
         </div>
@@ -260,30 +299,70 @@ function SymbolSection({
   );
 }
 
+function dayLabel(d: string, long = false): string {
+  const opts: Intl.DateTimeFormatOptions = long
+    ? { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }
+    : { day: "numeric", month: "short", timeZone: "UTC" };
+  return new Intl.DateTimeFormat("es-ES", opts).format(new Date(`${d}T12:00:00Z`));
+}
+
+const SYM_LABEL: Record<SessionSymbol, string> = { ES: "SP (ES)", NQ: "NQ" };
+
 export default async function BacktestPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cd?: string }>;
+  searchParams: Promise<{ sym?: string; day?: string; cd?: string }>;
 }) {
   const sp = await searchParams;
-  const cdRaw = Number(sp.cd);
-  const cooldownSec = COOLDOWN_OPTIONS.some((o) => o.sec === cdRaw) ? cdRaw : DEFAULT_PARAMS.signalCooldownSec;
-
   const list = await getAvailableSessions();
-  const bySymbol = new Map<SessionSymbol, SessionData[]>();
 
+  // símbolos disponibles y sus fechas
+  const symDates = new Map<SessionSymbol, string[]>();
   for (const s of list) {
-    const data = await getSession(s.symbol, s.session_date);
-    if (!data) continue;
-    if (!bySymbol.has(s.symbol)) bySymbol.set(s.symbol, []);
-    bySymbol.get(s.symbol)!.push(data);
+    if (!symDates.has(s.symbol)) symDates.set(s.symbol, []);
+    symDates.get(s.symbol)!.push(s.session_date);
+  }
+  const availSymbols = [...symDates.keys()].sort() as SessionSymbol[];
+
+  if (availSymbols.length === 0) {
+    return (
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-16">
+        <h1 className="font-[family-name:var(--font-heading)] text-4xl font-semibold text-text">Backtest de entradas</h1>
+        <div className="mt-6 rounded-2xl border border-border bg-panel/80 p-6 text-sm text-text-dim">
+          Todavía no hay sesiones grabadas para simular.
+        </div>
+      </main>
+    );
   }
 
-  const symbols = [...bySymbol.keys()].sort();
+  // instrumento elegido (default NQ si existe)
+  const sym: SessionSymbol =
+    (sp.sym === "ES" || sp.sym === "NQ") && symDates.has(sp.sym)
+      ? sp.sym
+      : symDates.has("NQ")
+        ? "NQ"
+        : availSymbols[0];
+
+  const dates = [...new Set(symDates.get(sym)!)].sort((a, b) => b.localeCompare(a)); // recientes primero
+  const day = sp.day && dates.includes(sp.day) ? sp.day : "total";
+
+  const cdRaw = Number(sp.cd);
+  const cd = COOLDOWN_OPTIONS.some((o) => o.sec === cdRaw) ? cdRaw : DEFAULT_PARAMS.signalCooldownSec;
+
+  const cur: ViewState = { sym, day, cd };
+
+  // cargar solo las sesiones necesarias (todas para total, o la del día)
+  const wantDates = day === "total" ? dates : [day];
+  const sessions: SessionData[] = [];
+  for (const d of wantDates) {
+    const data = await getSession(sym, d);
+    if (data) sessions.push(data);
+  }
+  const scopeLabel = day === "total" ? `Total (${dates.length} días)` : dayLabel(day, true);
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-16">
-      <header className="mb-10">
+      <header className="mb-8">
         <Link href="/" className="font-[family-name:var(--font-mono)] text-xs text-text-dim hover:text-gamma">
           ← Archivo de sesión
         </Link>
@@ -292,14 +371,35 @@ export default async function BacktestPage({
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-text-dim">
           Simula stop/target sobre el precio real grabado, por tipo de entrada, para decidir el stop y el
-          profit de la estrategia. Stop/target en ticks (rango amplio, hasta 1500). Cada operación se cierra en
-          su stop o su target (y al cierre de sesión si no toca ninguno). Migración = dirección &quot;imán&quot;
-          (hacia el goal que gana volumen). Doble confirmación =
-          señal Flowy + migración en la misma dirección dentro de {DEFAULT_PARAMS.doubleWindowSec}s. Señales de
-          Flowy de-duplicadas: una repetición de la misma dirección dentro del enfriamiento no cuenta como nuevo
-          trade. Stops acotados a ≤300 ticks (tolerancia); targets hasta 1500. El enfriamiento de señal se elige
-          en el encabezado de cada tabla.
+          profit. Stop/target en ticks (stops ≤300 por tolerancia; targets hasta 1500). Cada operación se cierra
+          en su stop o su target (o al cierre de sesión). Migración = dirección &quot;imán&quot; (hacia el goal que
+          gana volumen). Doble confirmación = señal Flowy + migración en la misma dirección dentro de{" "}
+          {DEFAULT_PARAMS.doubleWindowSec}s.
         </p>
+
+        <div className="mt-5 space-y-2">
+          <PillNav
+            label="Instrumento:"
+            items={availSymbols.map((s) => ({
+              key: s,
+              label: SYM_LABEL[s],
+              href: buildHref(cur, { sym: s, day: "total" }),
+              active: s === sym,
+            }))}
+          />
+          <PillNav
+            label="Sesión:"
+            items={[
+              { key: "total", label: "Total", href: buildHref(cur, { day: "total" }), active: day === "total" },
+              ...dates.map((d) => ({
+                key: d,
+                label: dayLabel(d),
+                href: buildHref(cur, { day: d }),
+                active: day === d,
+              })),
+            ]}
+          />
+        </div>
       </header>
 
       {dataMode === "mock" && (
@@ -308,14 +408,12 @@ export default async function BacktestPage({
         </div>
       )}
 
-      {symbols.length === 0 ? (
+      {sessions.length === 0 ? (
         <div className="rounded-2xl border border-border bg-panel/80 p-6 text-sm text-text-dim">
-          Todavía no hay sesiones grabadas para simular.
+          No hay datos para {SYM_LABEL[sym]} en {scopeLabel}.
         </div>
       ) : (
-        symbols.map((sym) => (
-          <SymbolSection key={sym} symbol={sym} sessions={bySymbol.get(sym)!} cooldownSec={cooldownSec} />
-        ))
+        <SymbolSection symbol={sym} sessions={sessions} cur={cur} scopeLabel={scopeLabel} />
       )}
     </main>
   );
