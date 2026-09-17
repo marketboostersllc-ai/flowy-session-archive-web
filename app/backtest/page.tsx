@@ -7,17 +7,23 @@ import {
   type EntryKind,
   type KindResult,
 } from "@/lib/backtest";
-import type { SessionData, SessionSymbol } from "@/lib/types";
+import { TICK_SIZE, type SessionData, type SessionSymbol } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const KINDS: EntryKind[] = ["flowy", "mig_all", "mig_fast", "mig_slow", "double"];
+
+// $ por tick del E-mini: NQ = $5, ES = $12,50.
+const DOLLAR_PER_TICK: Record<SessionSymbol, number> = { NQ: 5, ES: 12.5 };
 
 function pct(x: number): string {
   return `${(x * 100).toFixed(0)}%`;
 }
 function pts(x: number): string {
   return `${x >= 0 ? "+" : ""}${x.toFixed(1)}`;
+}
+function usd(x: number): string {
+  return `${x >= 0 ? "+" : "-"}$${Math.abs(x).toFixed(0)}`;
 }
 function pf(x: number): string {
   return x === Infinity ? "∞" : x.toFixed(2);
@@ -31,7 +37,7 @@ function cellStyle(exp: number, maxAbs: number): React.CSSProperties {
   return { backgroundColor: `rgba(${c}, ${(0.12 + a * 0.5).toFixed(2)})` };
 }
 
-function ExpGrid({ res }: { res: KindResult }) {
+function ExpGrid({ res, dpt }: { res: KindResult; dpt: number }) {
   const stops = DEFAULT_PARAMS.stops;
   const targets = DEFAULT_PARAMS.targets;
   const maxAbs = Math.max(...res.grid.map((c) => Math.abs(c.expectancy)), 0.01);
@@ -65,7 +71,7 @@ function ExpGrid({ res }: { res: KindResult }) {
                     key={t}
                     className={`p-1.5 tabular-nums ${isBest(s, t) ? "font-semibold text-text outline outline-1 outline-gamma" : "text-text"}`}
                     style={cellStyle(c.expectancy, maxAbs)}
-                    title={`stop ${s} / target ${t} · ${c.trades} trades · win ${pct(c.winRate)} · PF ${pf(c.profitFactor)}`}
+                    title={`stop ${s} / target ${t} ticks · ${c.trades} trades · win ${pct(c.winRate)} · exp ${usd(c.expectancy * dpt)}/trade · PF ${pf(c.profitFactor)}`}
                   >
                     {pts(c.expectancy)}
                   </td>
@@ -76,20 +82,22 @@ function ExpGrid({ res }: { res: KindResult }) {
         </tbody>
       </table>
       <p className="mt-1.5 text-[11px] text-text-dim">
-        Cada celda = expectancy (puntos por trade) con ese stop y target. Verde &gt; 0, rojo &lt; 0. Recuadro
-        dorado = mejor combinación. Pasa el ratón para ver nº de trades, win% y profit factor.
+        Stop/target en <strong>ticks</strong>. Cada celda = expectancy (ticks por trade). Verde &gt; 0, rojo &lt; 0.
+        Recuadro dorado = mejor combinación. Pasa el ratón para ver nº de trades, win%, expectancy en $ y profit factor.
       </p>
     </div>
   );
 }
 
 function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: SessionData[] }) {
-  const results = KINDS.map((k) => runBacktest(k, sessions, DEFAULT_PARAMS));
+  const tickSize = TICK_SIZE[symbol];
+  const dpt = DOLLAR_PER_TICK[symbol];
+  const results = KINDS.map((k) => runBacktest(k, sessions, DEFAULT_PARAMS, tickSize));
 
   return (
     <section className="mb-14">
       <h2 className="mb-4 font-[family-name:var(--font-heading)] text-2xl font-semibold text-text">
-        {symbol}
+        {symbol} <span className="text-sm font-normal text-text-dim">· ${dpt}/tick</span>
       </h2>
 
       {/* Resumen: mejor stop/target por tipo */}
@@ -99,12 +107,13 @@ function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: 
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
               <th className="p-3 font-normal">Tipo de entrada</th>
               <th className="p-3 text-right font-normal">Entradas</th>
-              <th className="p-3 text-right font-normal">MAE p50/p80</th>
-              <th className="p-3 text-right font-normal">MFE p50/p80</th>
-              <th className="p-3 text-right font-normal">Stop</th>
-              <th className="p-3 text-right font-normal">Target</th>
+              <th className="p-3 text-right font-normal">MAE p50/p80 (ticks)</th>
+              <th className="p-3 text-right font-normal">MFE p50/p80 (ticks)</th>
+              <th className="p-3 text-right font-normal">Stop (ticks)</th>
+              <th className="p-3 text-right font-normal">Target (ticks)</th>
               <th className="p-3 text-right font-normal">Win%</th>
-              <th className="p-3 text-right font-normal">Exp. (pts)</th>
+              <th className="p-3 text-right font-normal">Exp. (ticks)</th>
+              <th className="p-3 text-right font-normal">Exp. ($)</th>
               <th className="p-3 text-right font-normal">PF</th>
             </tr>
           </thead>
@@ -126,6 +135,11 @@ function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: 
                   className={`p-3 text-right tabular-nums font-semibold ${r.best && r.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
                 >
                   {r.best ? pts(r.best.expectancy) : "—"}
+                </td>
+                <td
+                  className={`p-3 text-right tabular-nums font-semibold ${r.best && r.best.expectancy >= 0 ? "text-gamma" : "text-red-400"}`}
+                >
+                  {r.best ? usd(r.best.expectancy * dpt) : "—"}
                 </td>
                 <td className="p-3 text-right tabular-nums text-text">{r.best ? pf(r.best.profitFactor) : "—"}</td>
               </tr>
@@ -154,7 +168,7 @@ function SymbolSection({ symbol, sessions }: { symbol: SessionSymbol; sessions: 
                   : "."}
               </p>
             ) : (
-              <ExpGrid res={r} />
+              <ExpGrid res={r} dpt={dpt} />
             )}
           </div>
         ))}

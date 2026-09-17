@@ -29,15 +29,16 @@ import type {
 export type Dir = 1 | -1; // +1 largo, -1 corto
 
 export interface BacktestParams {
-  stops: number[]; // puntos
-  targets: number[]; // puntos
+  stops: number[]; // TICKS
+  targets: number[]; // TICKS
   maxHoldSec: number; // salida por tiempo si no toca stop/target
   doubleWindowSec: number; // ventana señal→migración para doble confirmación
 }
 
+// Rejilla en TICKS (NQ/ES: 1 punto = 4 ticks, tick = 0.25).
 export const DEFAULT_PARAMS: BacktestParams = {
-  stops: [10, 15, 20, 25, 30, 40],
-  targets: [10, 15, 20, 25, 30, 40, 50, 60, 75, 100],
+  stops: [40, 60, 80, 100, 120, 160],
+  targets: [40, 60, 80, 100, 120, 160, 200, 240, 300, 400],
   maxHoldSec: 1200, // 20 min
   doubleWindowSec: 120,
 };
@@ -97,24 +98,25 @@ function goalStrikeAt(goalSeries: GoalSeriesPoint[], goal: string, tMs: number):
 }
 
 /** Simula UNA entrada: recorre el precio desde la entrada hasta stop/target o
- * salida por tiempo. Devuelve el P/L en puntos. Conservador: si una misma
+ * salida por tiempo. Devuelve el P/L en TICKS. Conservador: si una misma
  * muestra rompe stop y target a la vez, cuenta como stop. */
 function simulateOne(
   points: PricePoint[],
   entry: Entry,
-  stopPts: number,
-  targetPts: number,
-  maxHoldMs: number
+  stopTicks: number,
+  targetTicks: number,
+  maxHoldMs: number,
+  tickSize: number
 ): number {
   const endMs = entry.tMs + maxHoldMs;
   let lastMove = 0;
   for (const p of points) {
     if (p.t <= entry.tMs) continue;
     if (p.t > endMs) break;
-    const move = (p.price - entry.entry) * entry.dir; // a favor = positivo
+    const move = ((p.price - entry.entry) * entry.dir) / tickSize; // ticks, a favor = positivo
     lastMove = move;
-    if (move <= -stopPts) return -stopPts; // stop primero (conservador)
-    if (move >= targetPts) return targetPts;
+    if (move <= -stopTicks) return -stopTicks; // stop primero (conservador)
+    if (move >= targetTicks) return targetTicks;
   }
   return lastMove; // salida por tiempo (marcado al último precio)
 }
@@ -223,22 +225,27 @@ function collectEntries(kind: EntryKind, data: SessionData, params: BacktestPara
   return entries;
 }
 
-/** Recorrido a favor / en contra (MFE/MAE) de una entrada hasta maxHold. */
-function excursion(points: PricePoint[], e: Entry, maxHoldMs: number): { mfe: number; mae: number } {
+/** Recorrido a favor / en contra (MFE/MAE) de una entrada hasta maxHold, en TICKS. */
+function excursion(points: PricePoint[], e: Entry, maxHoldMs: number, tickSize: number): { mfe: number; mae: number } {
   const endMs = e.tMs + maxHoldMs;
   let mfe = 0;
   let mae = 0;
   for (const p of points) {
     if (p.t <= e.tMs) continue;
     if (p.t > endMs) break;
-    const move = (p.price - e.entry) * e.dir;
+    const move = ((p.price - e.entry) * e.dir) / tickSize;
     if (move > mfe) mfe = move;
     if (-move > mae) mae = -move;
   }
   return { mfe, mae };
 }
 
-export function runBacktest(kind: EntryKind, sessions: SessionData[], params: BacktestParams): KindResult {
+export function runBacktest(
+  kind: EntryKind,
+  sessions: SessionData[],
+  params: BacktestParams,
+  tickSize: number
+): KindResult {
   const allEntries: { points: PricePoint[]; entry: Entry }[] = [];
   const maes: number[] = [];
   const mfes: number[] = [];
@@ -249,7 +256,7 @@ export function runBacktest(kind: EntryKind, sessions: SessionData[], params: Ba
     if (points.length === 0) continue;
     for (const entry of collectEntries(kind, s, params)) {
       allEntries.push({ points, entry });
-      const ex = excursion(points, entry, maxHoldMs);
+      const ex = excursion(points, entry, maxHoldMs, tickSize);
       mfes.push(ex.mfe);
       maes.push(ex.mae);
     }
@@ -267,7 +274,7 @@ export function runBacktest(kind: EntryKind, sessions: SessionData[], params: Ba
       let profit = 0;
       let loss = 0;
       for (const { points, entry } of allEntries) {
-        const pnl = simulateOne(points, entry, stop, target, maxHoldMs);
+        const pnl = simulateOne(points, entry, stop, target, maxHoldMs, tickSize);
         trades++;
         gross += pnl;
         if (pnl > 0) {
